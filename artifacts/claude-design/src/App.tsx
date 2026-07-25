@@ -5,6 +5,8 @@ interface Cell { c: number; t: boolean; }
 type Grid = (Cell | null)[][];
 interface Pill { x: number; y: number; dir: number; a: number; b: number; }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; c: number; }
+// Trail left by a hard-drop: two column indices + row range + fade timer
+interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; }
 
 interface State {
   screen: 'menu' | 'play' | 'win' | 'lose';
@@ -45,6 +47,7 @@ export default class App extends React.Component<{}, State> {
   pill: Pill | null = null;
   phase: 'idle' | 'fall' | 'flash' | 'grav' = 'idle';
   particles: Particle[] = [];
+  dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
   lastFall = 0;
   gravT = 0;
@@ -137,6 +140,32 @@ export default class App extends React.Component<{}, State> {
   arp(freqs: number[], step: number, d?: number) {
     freqs.forEach((f, i) => setTimeout(() => this.beep(f, d || 0.1), i * step));
   }
+  dropSound() {
+    if (!this.state.sound) return;
+    try {
+      if (!this.ac) this.ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (this.ac.state === 'suspended') this.ac.resume();
+      const now = this.ac.currentTime;
+      // Descending zip: sawtooth sweep from 900 → 90 Hz
+      const o1 = this.ac.createOscillator(), g1 = this.ac.createGain();
+      o1.type = 'sawtooth';
+      o1.frequency.setValueAtTime(900, now);
+      o1.frequency.exponentialRampToValueAtTime(90, now + 0.1);
+      g1.gain.setValueAtTime(0.22, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      o1.connect(g1); g1.connect(this.ac.destination);
+      o1.start(now); o1.stop(now + 0.15);
+      // Impact thud
+      const o2 = this.ac.createOscillator(), g2 = this.ac.createGain();
+      o2.type = 'triangle';
+      o2.frequency.setValueAtTime(160, now + 0.1);
+      o2.frequency.exponentialRampToValueAtTime(60, now + 0.2);
+      g2.gain.setValueAtTime(0.28, now + 0.1);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      o2.connect(g2); g2.connect(this.ac.destination);
+      o2.start(now + 0.1); o2.stop(now + 0.25);
+    } catch (e) {}
+  }
 
   // ── game setup ──────────────────────────────────────────────────────────
   startGame() {
@@ -223,10 +252,22 @@ export default class App extends React.Component<{}, State> {
 
   hardDrop() {
     if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
+    const startY = this.pill.y;
     let p = this.pill;
     while (true) {
       const n = { ...p, y: p.y + 1 };
       if (this.fits(n)) p = n; else break;
+    }
+    // Only trigger effects when the piece actually travelled some distance
+    if (p.y > startY) {
+      const cells = this.pillCells(p);
+      this.dropFlashes.push({
+        cols: cells.map(c => c.x),
+        yTop: Math.max(0, startY),
+        yBot: Math.max(...cells.map(c => c.y)),
+        life: 14,
+      });
+      this.dropSound();
     }
     this.pill = p; this.lock();
   }
@@ -342,6 +383,7 @@ export default class App extends React.Component<{}, State> {
     }
     this.particles = this.particles.filter(p => (p.life -= 1) > 0);
     for (const p of this.particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.05; }
+    this.dropFlashes = this.dropFlashes.filter(f => (f.life -= 1) > 0);
     this.draw(ts);
   }
 
@@ -412,11 +454,27 @@ export default class App extends React.Component<{}, State> {
 
     const scale = Math.min(cw / bw, ch / bh);
     const dw = bw * scale, dh = bh * scale, boardX = (cw - dw) / 2;
-    ctx.drawImage(this.off, boardX, 0, dw, dh);
-
-    // ── grid lines drawn on main canvas for crisp 1px lines ──────────
     const cellW = dw / this.cols;
     const cellH = dh / this.rows;
+    ctx.drawImage(this.off, boardX, 0, dw, dh);
+
+    // ── drop-flash streaks ─────────────────────────────────────────────
+    for (const f of this.dropFlashes) {
+      const alpha = (f.life / 14) * 0.9;
+      const y1 = f.yTop * cellH;
+      const y2 = (f.yBot + 1) * cellH;
+      for (const col of f.cols) {
+        const x1 = boardX + col * cellW;
+        const streak = ctx.createLinearGradient(0, y1, 0, y2);
+        streak.addColorStop(0,   `rgba(200,230,255,0)`);
+        streak.addColorStop(0.5, `rgba(180,210,255,${alpha * 0.5})`);
+        streak.addColorStop(1,   `rgba(255,255,255,${alpha})`);
+        ctx.fillStyle = streak;
+        ctx.fillRect(x1, y1, cellW, y2 - y1);
+      }
+    }
+
+    // ── grid lines drawn on main canvas for crisp 1px lines ──────────
     ctx.strokeStyle = 'rgba(110, 140, 220, 0.22)';
     ctx.lineWidth = 1;
     ctx.beginPath();
