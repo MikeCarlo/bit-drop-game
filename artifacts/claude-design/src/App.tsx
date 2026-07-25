@@ -415,7 +415,7 @@ export default class App extends React.Component<{}, State> {
   touchStart(e: TouchEvent) {
     e.preventDefault();
     const t = e.touches[0], now = performance.now();
-    if (this.lastTap && now - this.lastTap < 200 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 40) {
+    if (this.lastTap && now - this.lastTap < 320 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 50) {
       this.lastTap = 0; this.rotate();
     } else { this.lastTap = now; this.tapX = t.clientX; this.tapY = t.clientY; }
     this.tstate = { active: true, sx: t.clientX, sy: t.clientY, rx: t.clientX, moved: false, t0: now, holdDir: 0, holdNext: 0, dropped: false };
