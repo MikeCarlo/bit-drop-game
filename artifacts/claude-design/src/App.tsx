@@ -52,6 +52,10 @@ export default class App extends React.Component<{}, State> {
   fastDrop = false;
   chain = 1;
   winPending = false;
+  // lock delay: hold the piece at the floor briefly so double-taps can rotate it
+  grounded = false;
+  lockAt = 0;
+  LOCK_DELAY = 500; // ms
   raf = 0;
   off: HTMLCanvasElement = document.createElement('canvas');
   cellPx = 30;
@@ -154,7 +158,7 @@ export default class App extends React.Component<{}, State> {
       if (this.runLen(x, y, 0, 1, c) + this.runLen(x, y, 0, -1, c) >= 2) continue;
       this.grid[y][x] = { c, t: true }; placed++;
     }
-    this.particles = []; this.flash = []; this.chain = 1; this.fastDrop = false; this.winPending = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.fastDrop = false; this.winPending = false; this.grounded = false;
     this.setState({ screen: 'play', score: 0, left: placed, paused: false, newBest: false });
     this.spawn();
     this.lastFall = performance.now();
@@ -173,7 +177,7 @@ export default class App extends React.Component<{}, State> {
   spawn() {
     const x = (this.cols >> 1) - 1;
     this.pill = { x, y: 0, dir: 0, a: (Math.random() * 4) | 0, b: (Math.random() * 4) | 0 };
-    this.fastDrop = false;
+    this.fastDrop = false; this.grounded = false;
     const [c1, c2] = this.pillCells();
     if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.pill = null; this.gameOver(false); return; }
     this.phase = 'fall'; this.lastFall = performance.now();
@@ -206,7 +210,14 @@ export default class App extends React.Component<{}, State> {
     if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
     for (const kick of [0, -1, 1]) {
       const p = { ...this.pill, dir: (this.pill.dir + 1) % 4, x: this.pill.x + kick };
-      if (this.fits(p)) { this.pill = p; this.beep(660, 0.05); return; }
+      if (this.fits(p)) {
+        this.pill = p;
+        this.beep(660, 0.05);
+        // If grounded, each rotation resets the lock timer so the player
+        // can keep double-tapping to find the right orientation
+        if (this.grounded) this.lockAt = performance.now() + this.LOCK_DELAY;
+        return;
+      }
     }
   }
 
@@ -298,11 +309,22 @@ export default class App extends React.Component<{}, State> {
     const playing = this.state.screen === 'play' && !this.state.paused;
     if (playing) {
       if (this.phase === 'fall' && this.pill) {
-        const iv = this.fastDrop ? 45 : 1000 - this.state.speed * 90;
-        if (ts - this.lastFall > iv) {
-          this.lastFall = ts;
-          const p = { ...this.pill, y: this.pill.y + 1 };
-          if (this.fits(p)) this.pill = p; else this.lock();
+        // If grounded, wait for lock delay to expire before locking
+        if (this.grounded) {
+          if (ts > this.lockAt) { this.grounded = false; this.lock(); }
+        } else {
+          const iv = this.fastDrop ? 45 : 1000 - this.state.speed * 90;
+          if (ts - this.lastFall > iv) {
+            this.lastFall = ts;
+            const p = { ...this.pill, y: this.pill.y + 1 };
+            if (this.fits(p)) {
+              this.pill = p;
+            } else {
+              // Piece hit the floor — start lock delay
+              this.grounded = true;
+              this.lockAt = ts + this.LOCK_DELAY;
+            }
+          }
         }
       } else if (this.phase === 'flash') {
         if (ts > this.phaseUntil) this.doClear();
@@ -393,7 +415,7 @@ export default class App extends React.Component<{}, State> {
   touchStart(e: TouchEvent) {
     e.preventDefault();
     const t = e.touches[0], now = performance.now();
-    if (this.lastTap && now - this.lastTap < 300 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 40) {
+    if (this.lastTap && now - this.lastTap < 200 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 40) {
       this.lastTap = 0; this.rotate();
     } else { this.lastTap = now; this.tapX = t.clientX; this.tapY = t.clientY; }
     this.tstate = { active: true, sx: t.clientX, sy: t.clientY, rx: t.clientX, moved: false, t0: now, holdDir: 0, holdNext: 0, dropped: false };
