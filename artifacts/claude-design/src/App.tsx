@@ -360,12 +360,37 @@ export default class App extends React.Component<{}, State> {
     if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
     const ctx = cv.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#6e6e6e'; ctx.fillRect(0, 0, cw, ch);
+
+    // ── animated dark gradient background ─────────────────────────────
+    const t  = ts * 0.00016;            // drives very slow movement
+    const ang = t * 0.35;               // slowly rotating gradient axis
+    const r  = Math.max(cw, ch) * 0.9;
+    const mx = cw * 0.5, my = ch * 0.5;
+    const bgGrad = ctx.createLinearGradient(
+      mx + Math.cos(ang) * r, my + Math.sin(ang) * r,
+      mx - Math.cos(ang) * r, my - Math.sin(ang) * r,
+    );
+    const mix = Math.sin(t * 0.4) * 0.5 + 0.5; // 0–1, slow pulse
+    bgGrad.addColorStop(0,   '#020209');
+    bgGrad.addColorStop(mix, '#071330');
+    bgGrad.addColorStop(1,   '#030310');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, cw, ch);
+
     if (this.state.screen === 'menu' || !this.grid.length) return;
+
     const bw = this.cols * 8, bh = this.rows * 8;
     if (this.off.width !== bw || this.off.height !== bh) { this.off.width = bw; this.off.height = bh; }
     const o = this.off.getContext('2d')!;
-    o.fillStyle = '#6e6e6e'; o.fillRect(0, 0, bw, bh);
+
+    // Game board background — same gradient mapped to board space
+    const boardGrad = o.createLinearGradient(0, 0, bw, bh);
+    boardGrad.addColorStop(0,   '#020209');
+    boardGrad.addColorStop(mix, '#071330');
+    boardGrad.addColorStop(1,   '#030310');
+    o.fillStyle = boardGrad;
+    o.fillRect(0, 0, bw, bh);
+
     const flashOn = ((ts / 70) | 0) % 2 === 0;
     const flashSet = new Set(this.flash.map(f => f[0] + ',' + f[1]));
     for (let y = 0; y < this.rows; y++) {
@@ -384,10 +409,27 @@ export default class App extends React.Component<{}, State> {
     for (const p of this.particles) {
       o.fillStyle = this.LIGHT[p.c]; o.fillRect(p.x | 0, p.y | 0, 2, 2);
     }
+
     const scale = Math.min(cw / bw, ch / bh);
-    const dw = bw * scale, dh = bh * scale, ox = (cw - dw) / 2;
-    ctx.fillStyle = '#57575a'; ctx.fillRect(0, 0, cw, ch);
-    ctx.drawImage(this.off, ox, 0, dw, dh);
+    const dw = bw * scale, dh = bh * scale, boardX = (cw - dw) / 2;
+    ctx.drawImage(this.off, boardX, 0, dw, dh);
+
+    // ── grid lines drawn on main canvas for crisp 1px lines ──────────
+    const cellW = dw / this.cols;
+    const cellH = dh / this.rows;
+    ctx.strokeStyle = 'rgba(110, 140, 220, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= this.cols; x++) {
+      const px = boardX + x * cellW;
+      ctx.moveTo(px, 0); ctx.lineTo(px, dh);
+    }
+    for (let y = 0; y <= this.rows; y++) {
+      const py = y * cellH;
+      ctx.moveTo(boardX, py); ctx.lineTo(boardX + dw, py);
+    }
+    ctx.stroke();
+
     this.cellPx = scale * 8;
   }
 
