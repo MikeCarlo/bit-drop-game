@@ -678,11 +678,13 @@ export default class App extends React.Component<{}, State> {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 9, color: '#9a9aa0' }}>SOUND</span>
-                  <button onClick={() => { const v = !s.sound; this.setState({ sound: v }); localStorage.setItem('bitdrop-snd', v ? '1' : '0'); }}
-                    style={{ fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 0, width: 64, height: 26, padding: 0, background: sndTrack, border: '3px solid #141416', cursor: 'pointer', position: 'relative' }}>
-                    <span style={{ position: 'absolute', top: 0, bottom: 0, width: 26, background: '#d9cf4a', left: sndKnobL, right: sndKnobR }} />
-                    <span style={{ flex: 1, textAlign: 'center', fontSize: 8, color: '#ffffff' }}>{sndLabel}</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 9, color: s.sound ? '#2ea043' : '#9a9aa0', minWidth: 30, textAlign: 'right' }}>{sndLabel}</span>
+                    <button onClick={() => { const v = !s.sound; this.setState({ sound: v }); localStorage.setItem('bitdrop-snd', v ? '1' : '0'); }}
+                      style={{ fontFamily: 'inherit', width: 56, height: 26, padding: 0, background: sndTrack, border: '3px solid #141416', cursor: 'pointer', position: 'relative' }}>
+                      <span style={{ position: 'absolute', top: 0, bottom: 0, width: 24, background: '#d9cf4a', left: sndKnobL, right: sndKnobR }} />
+                    </button>
+                  </div>
                 </div>
 
                 <button onClick={() => this.startGame()} style={{ fontFamily: 'inherit', fontSize: 14, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 16, cursor: 'pointer', marginTop: 4 }}>
