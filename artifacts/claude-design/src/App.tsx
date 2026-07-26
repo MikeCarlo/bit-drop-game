@@ -1,7 +1,8 @@
 import React from 'react';
 
 // ── types ──────────────────────────────────────────────────────────────────
-interface Cell { c: number; t: boolean; }
+// dx/dy: relative offset to this cell's linked pill partner (undefined = single segment)
+interface Cell { c: number; t: boolean; dx?: number; dy?: number; }
 type Grid = (Cell | null)[][];
 interface Pill { x: number; y: number; dir: number; a: number; b: number; }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; c: number; }
@@ -273,7 +274,10 @@ export default class App extends React.Component<{}, State> {
   }
 
   lock() {
-    for (const c of this.pillCells()) if (c.y >= 0) this.grid[c.y][c.x] = { c: c.c, t: false };
+    const [a, b] = this.pillCells();
+    const bothOn = a.y >= 0 && b.y >= 0;
+    if (a.y >= 0) this.grid[a.y][a.x] = { c: a.c, t: false, ...(bothOn ? { dx: b.x - a.x, dy: b.y - a.y } : {}) };
+    if (b.y >= 0) this.grid[b.y][b.x] = { c: b.c, t: false, ...(bothOn ? { dx: a.x - b.x, dy: a.y - b.y } : {}) };
     this.pill = null; this.chain = 1;
     this.beep(150, 0.07, 'triangle', 0.18);
     if (!this.checkClears()) this.spawn();
@@ -311,6 +315,11 @@ export default class App extends React.Component<{}, State> {
       pts += (cell.t ? 50 : 10) * this.chain;
       if (cell.t) targets++;
       this.burst(x, y, cell.c);
+      // Unlink the partner half so it becomes a free single segment
+      if (cell.dx !== undefined && cell.dy !== undefined) {
+        const partner = (this.grid[y + cell.dy] || [])[x + cell.dx];
+        if (partner) { delete partner.dx; delete partner.dy; }
+      }
       this.grid[y][x] = null;
     }
     this.flash = [];
@@ -323,12 +332,43 @@ export default class App extends React.Component<{}, State> {
   }
 
   gravStep(): boolean {
-    let moved = false;
+    // Which cells may fall one row this tick? A cell can fall only if:
+    //  - it isn't a fixed target square,
+    //  - the space below is empty OR also falling,
+    //  - AND its linked pill partner (if any) can fall too.
+    const can: boolean[][] = Array.from({ length: this.rows }, () => Array(this.cols).fill(false));
     for (let y = this.rows - 2; y >= 0; y--) {
       for (let x = 0; x < this.cols; x++) {
         const cell = this.grid[y][x];
-        if (cell && !cell.t && !this.grid[y + 1][x]) {
-          this.grid[y + 1][x] = cell; this.grid[y][x] = null; moved = true;
+        if (!cell || cell.t) continue;
+        const below = this.grid[y + 1][x];
+        can[y][x] = !below || can[y + 1][x];
+      }
+    }
+    // Fixpoint: linked halves must fall together; losing support cascades upward
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let y = 0; y < this.rows - 1; y++) {
+        for (let x = 0; x < this.cols; x++) {
+          if (!can[y][x]) continue;
+          const cell = this.grid[y][x]!;
+          const below = this.grid[y + 1][x];
+          if (below && !can[y + 1][x]) { can[y][x] = false; changed = true; continue; }
+          if (cell.dx !== undefined && cell.dy !== undefined) {
+            const py = y + cell.dy, px = x + cell.dx;
+            const partner = (this.grid[py] || [])[px];
+            if (partner && !can[py][px]) { can[y][x] = false; changed = true; }
+          }
+        }
+      }
+    }
+    // Move all falling cells down one row (bottom-up keeps pairs intact)
+    let moved = false;
+    for (let y = this.rows - 2; y >= 0; y--) {
+      for (let x = 0; x < this.cols; x++) {
+        if (can[y][x]) {
+          this.grid[y + 1][x] = this.grid[y][x]; this.grid[y][x] = null; moved = true;
         }
       }
     }
