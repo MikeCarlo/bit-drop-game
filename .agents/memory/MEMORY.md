@@ -1,0 +1,1 @@
+- [BIT-DROP verification quirks](bitdrop-verification.md) — portrait-only game: screenshots show the rotate blocker by design; verify via tsc + logs instead.

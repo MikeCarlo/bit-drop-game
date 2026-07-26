@@ -10,8 +10,20 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 // Trail left by a hard-drop: two column indices + row range + fade timer
 interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; }
 
+// A tutorial step: prompt text, a goal that completes it, optional board setup
+// and a scripted pill. Clear-type goals retry (board resets) until achieved.
+interface TutStep {
+  title: string;
+  text: string;
+  goal: 'move' | 'rotate' | 'drop' | 'clear' | 'clearTarget' | 'clearBig' | 'chain';
+  need?: number;                                  // action count for move/rotate/drop
+  pill?: [number, number];                        // scripted pill colors
+  setup?: (g: Grid, cols: number, rows: number) => number; // builds board, returns target count
+}
+
 interface State {
   screen: 'menu' | 'play' | 'win' | 'lose' | 'learn';
+  tutStep: number; // -1 = not in tutorial; TUT.length = completed overlay
   score: number;
   left: number;
   paused: boolean;
@@ -27,7 +39,7 @@ interface State {
 // ── game component ─────────────────────────────────────────────────────────
 export default class App extends React.Component<{}, State> {
   state: State = {
-    screen: 'menu', score: 0, left: 0, paused: false, newBest: false,
+    screen: 'menu', tutStep: -1, score: 0, left: 0, paused: false, newBest: false,
     best: +(localStorage.getItem('bitdrop-best') || 0),
     width: +(localStorage.getItem('bitdrop-w') || 10),
     viruses: +(localStorage.getItem('bitdrop-v') || 12),
@@ -58,6 +70,35 @@ export default class App extends React.Component<{}, State> {
   chain = 1;
   runLenAt = new Map<string, number>();
   winPending = false;
+  // tutorial internals
+  tutCount = 0;       // actions performed toward the current step's `need`
+  tutAdvance = false; // set when a clear-goal step is achieved; consumed on settle
+  TUT: TutStep[] = [
+    { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the pill left and right. move it 3 times!', goal: 'move', need: 3, pill: [0, 1] },
+    { title: 'ROTATE', text: 'hold with one finger, tap with a second — each tap rotates. (double-tap works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
+    { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
+    {
+      title: 'MATCH 4', text: 'line up 4 of a color to clear it. each piece = 10 pts. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
+      setup: (g, _c, r) => { g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false }; return 0; },
+    },
+    {
+      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
+      setup: (g, _c, r) => { g[r - 1][0] = { c: 3, t: true }; g[r - 1][1] = { c: 3, t: false }; return 1; },
+    },
+    {
+      title: 'BIG LINES', text: 'longer lines multiply the points: 5 = x2, 6 = x3, 7 = x4, 8+ = x5. make a line of SIX blues!', goal: 'clearBig', pill: [1, 1],
+      setup: (g, _c, r) => { for (let x = 0; x < 4; x++) g[r - 1][x] = { c: 1, t: false }; return 0; },
+    },
+    {
+      title: 'CHAIN REACTIONS', text: 'when a clear drops pieces into another match, the next clear scores x2, x3... complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
+      setup: (g, _c, r) => {
+        g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
+        g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
+        g[r - 2][3] = { c: 2, t: false };
+        return 0;
+      },
+    },
+  ];
   // lock delay: hold the piece at the floor briefly so double-taps can rotate it
   grounded = false;
   lockAt = 0;
@@ -197,6 +238,79 @@ export default class App extends React.Component<{}, State> {
     this.beep(523, 0.06);
   }
 
+  // ── tutorial ────────────────────────────────────────────────────────────
+  isTut() { return this.state.tutStep >= 0 && this.state.tutStep < this.TUT.length; }
+
+  startTutorial() {
+    const cv = this.canvasRef.current!;
+    const box = cv.parentElement!;
+    this.cols = 8;
+    const cw = box.clientWidth, ch = box.clientHeight;
+    this.rows = Math.max(12, Math.min(30, Math.floor(ch / (cw / this.cols))));
+    this.particles = []; this.flash = []; this.dropFlashes = []; this.chain = 1;
+    this.fastDrop = false; this.winPending = false; this.grounded = false; this.tutAdvance = false;
+    this.setState({ screen: 'play', score: 0, paused: false, newBest: false, tutStep: 0 }, () => this.setupTutStep(0));
+    this.beep(523, 0.06);
+  }
+
+  setupTutStep(i: number) {
+    if (i >= this.TUT.length) { // finished!
+      localStorage.setItem('bitdrop-tut', '1');
+      this.phase = 'idle'; this.pill = null;
+      this.setState({ tutStep: this.TUT.length });
+      this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
+      return;
+    }
+    const step = this.TUT[i];
+    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+    const targets = step.setup ? step.setup(this.grid, this.cols, this.rows) : 0;
+    this.tutCount = 0; this.tutAdvance = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.winPending = false; this.grounded = false;
+    this.setState({ tutStep: i, left: targets });
+    const [a, b] = step.pill || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
+    this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+    this.fastDrop = false;
+    this.phase = 'fall'; this.lastFall = performance.now();
+  }
+
+  // Called when the player performs a counted action (move/rotate/drop)
+  tutHit(goal: TutStep['goal']) {
+    if (!this.isTut()) return;
+    const step = this.TUT[this.state.tutStep];
+    if (step.goal !== goal) return;
+    this.tutCount++;
+    this.forceUpdate(); // progress counter lives outside React state
+    if (this.tutCount >= (step.need || 1)) {
+      // move/rotate advance in place (pill keeps falling); drop advances on next spawn
+      if (goal === 'move' || goal === 'rotate') {
+        this.setState({ tutStep: this.state.tutStep + 1 });
+        this.tutCount = 0;
+        this.arp([659, 880], 70, 0.1);
+      } else {
+        this.tutAdvance = true;
+      }
+    }
+  }
+
+  // Called from doClear with details of what was cleared
+  tutClear(targets: number, maxRun: number, chainAtClear: number) {
+    if (!this.isTut() || this.tutAdvance) return;
+    const g = this.TUT[this.state.tutStep].goal;
+    if ((g === 'clear') ||
+        (g === 'clearTarget' && targets > 0) ||
+        (g === 'clearBig' && maxRun >= 6) ||
+        (g === 'chain' && chainAtClear >= 2)) {
+      this.tutAdvance = true;
+      this.arp([659, 880], 70, 0.1);
+    }
+  }
+
+  skipTutorial() {
+    localStorage.setItem('bitdrop-tut', '1');
+    this.setState({ tutStep: -1 });
+    this.startGame();
+  }
+
   runLen(x: number, y: number, dx: number, dy: number, c: number): number {
     let n = 0;
     for (let i = 1; i < 4; i++) {
@@ -207,6 +321,19 @@ export default class App extends React.Component<{}, State> {
   }
 
   spawn() {
+    if (this.isTut()) {
+      const i = this.state.tutStep;
+      if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
+      if (this.TUT[i].setup) { this.setupTutStep(i); return; }     // clear-goal missed → retry
+      // control steps: respawn the scripted pill
+      const [a, b] = this.TUT[i].pill!;
+      this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+      this.fastDrop = false; this.grounded = false;
+      const [t1, t2] = this.pillCells();
+      if (this.at(t1.x, t1.y) || this.at(t2.x, t2.y)) { this.setupTutStep(i); return; } // board jammed → reset step
+      this.phase = 'fall'; this.lastFall = performance.now();
+      return;
+    }
     const x = (this.cols >> 1) - 1;
     this.pill = { x, y: 0, dir: 0, a: (Math.random() * 4) | 0, b: (Math.random() * 4) | 0 };
     this.fastDrop = false; this.grounded = false;
@@ -234,7 +361,7 @@ export default class App extends React.Component<{}, State> {
   move(dx: number): boolean {
     if (this.phase !== 'fall' || !this.pill || this.state.paused) return false;
     const p = { ...this.pill, x: this.pill.x + dx };
-    if (this.fits(p)) { this.pill = p; this.beep(200, 0.03, 'square', 0.05); return true; }
+    if (this.fits(p)) { this.pill = p; this.beep(200, 0.03, 'square', 0.05); this.tutHit('move'); return true; }
     return false;
   }
 
@@ -245,6 +372,7 @@ export default class App extends React.Component<{}, State> {
       if (this.fits(p)) {
         this.pill = p;
         this.beep(660, 0.05);
+        this.tutHit('rotate');
         // If grounded, each rotation resets the lock timer so the player
         // can keep double-tapping to find the right orientation
         if (this.grounded) this.lockAt = performance.now() + this.LOCK_DELAY;
@@ -272,6 +400,7 @@ export default class App extends React.Component<{}, State> {
       });
       this.dropSound();
     }
+    this.tutHit('drop');
     this.pill = p; this.lock();
   }
 
@@ -321,11 +450,12 @@ export default class App extends React.Component<{}, State> {
   lenBonus(len: number) { return Math.min(len - 3, 5); }
 
   doClear() {
-    let pts = 0, targets = 0;
+    let pts = 0, targets = 0, maxRun = 0;
     for (const [x, y] of this.flash) {
       const cell = this.grid[y][x];
       if (!cell) continue;
       const runLen = this.runLenAt.get(x + ',' + y) || 4;
+      maxRun = Math.max(maxRun, runLen);
       pts += (cell.t ? 50 : 10) * this.chain * this.lenBonus(runLen);
       if (cell.t) targets++;
       this.burst(x, y, cell.c);
@@ -340,9 +470,10 @@ export default class App extends React.Component<{}, State> {
     const left = this.state.left - targets;
     this.setState({ score: this.state.score + pts, left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
+    this.tutClear(targets, maxRun, this.chain);
     this.chain++;
     this.phase = 'grav'; this.gravT = performance.now() + 120;
-    if (left <= 0) this.winPending = true;
+    if (left <= 0 && !this.isTut()) this.winPending = true;
   }
 
   gravStep(): boolean {
@@ -694,13 +825,18 @@ export default class App extends React.Component<{}, State> {
                   </div>
                 </div>
 
-                <button onClick={() => this.startGame()} style={{ fontFamily: 'inherit', fontSize: 14, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 16, cursor: 'pointer', marginTop: 4 }}>
+                <button onClick={() => localStorage.getItem('bitdrop-tut') ? this.startGame() : this.startTutorial()} style={{ fontFamily: 'inherit', fontSize: 14, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 16, cursor: 'pointer', marginTop: 4 }}>
                   START
                 </button>
 
-                <button onClick={() => this.setState({ screen: 'learn' })} style={{ fontFamily: 'inherit', fontSize: 11, background: '#2f4bc9', color: '#ffffff', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
-                  LEARN SCORING
-                </button>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => this.startTutorial()} style={{ flex: 1, fontFamily: 'inherit', fontSize: 10, background: '#d9cf4a', color: '#141416', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
+                    TUTORIAL
+                  </button>
+                  <button onClick={() => this.setState({ screen: 'learn' })} style={{ flex: 1, fontFamily: 'inherit', fontSize: 10, background: '#2f4bc9', color: '#ffffff', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
+                    SCORING
+                  </button>
+                </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
                   <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
@@ -716,6 +852,41 @@ export default class App extends React.Component<{}, State> {
           {/* Learn / scoring page */}
           {s.screen === 'learn' && <LearnPage onBack={() => this.setState({ screen: 'menu' })} />}
 
+          {/* Tutorial prompt banner */}
+          {isPlaying && s.tutStep >= 0 && s.tutStep < this.TUT.length && (
+            <div style={{ position: 'absolute', top: 10, left: 10, right: 10, background: 'rgba(20,20,22,0.92)', border: '3px solid #d9cf4a', padding: '12px 12px 10px', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 10, color: '#d9cf4a' }}>
+                  {s.tutStep + 1}/{this.TUT.length} · {this.TUT[s.tutStep].title}
+                </div>
+                <button onClick={() => this.skipTutorial()} style={{ fontFamily: 'inherit', fontSize: 8, background: '#3a3a3e', color: '#fff', border: '2px solid #6e6e72', padding: '6px 10px', cursor: 'pointer', pointerEvents: 'auto' }}>
+                  SKIP ▶
+                </button>
+              </div>
+              <div style={{ fontSize: 8, color: '#c8c8ce', lineHeight: 1.9 }}>{this.TUT[s.tutStep].text}</div>
+              {(this.TUT[s.tutStep].need || 1) > 1 && (
+                <div style={{ fontSize: 8, color: '#2ea043' }}>{Math.min(this.tutCount, this.TUT[s.tutStep].need!)} / {this.TUT[s.tutStep].need}</div>
+              )}
+            </div>
+          )}
+
+          {/* Tutorial complete overlay */}
+          {isPlaying && s.tutStep === this.TUT.length && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18, width: '100%', maxWidth: 300, textAlign: 'center' }}>
+                <div style={{ fontSize: 18, lineHeight: 1.5, color: '#2ea043' }}>TUTORIAL<br />COMPLETE!</div>
+                <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 2 }}>you know everything.<br />now go clear some targets!</div>
+                <button onClick={() => { this.setState({ tutStep: -1 }); this.startGame(); }} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
+                  PLAY NOW
+                </button>
+                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', tutStep: -1, paused: false }); }}
+                  style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
+                  MENU
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Paused overlay */}
           {isPaused && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -724,7 +895,7 @@ export default class App extends React.Component<{}, State> {
                 <button onClick={() => this.setState({ paused: false })} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   RESUME
                 </button>
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false }); }}
+                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   QUIT
                 </button>
