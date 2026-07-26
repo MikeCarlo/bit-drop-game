@@ -323,8 +323,8 @@ export default class App extends React.Component<{}, State> {
     return n;
   }
 
-  randColor() {
-    // Rainbow appears ~15% of the time on any individual pill half
+  randColor(forceNormal = false) {
+    if (forceNormal) return (Math.random() * 4) | 0;
     return Math.random() < 0.15 ? this.RAINBOW : (Math.random() * 4) | 0;
   }
 
@@ -343,7 +343,9 @@ export default class App extends React.Component<{}, State> {
       return;
     }
     const x = (this.cols >> 1) - 1;
-    this.pill = { x, y: 0, dir: 0, a: this.randColor(), b: this.randColor() };
+    const a = this.randColor();
+    const b = this.randColor(a === this.RAINBOW); // never both rainbow
+    this.pill = { x, y: 0, dir: 0, a, b };
     this.fastDrop = false; this.grounded = false;
     const [c1, c2] = this.pillCells();
     if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.pill = null; this.gameOver(false); return; }
@@ -701,11 +703,14 @@ export default class App extends React.Component<{}, State> {
 
   sprite(o: CanvasRenderingContext2D, px: number, py: number, c: number, target: boolean) {
     if (c === this.RAINBOW) {
-      // Animated wave: 4 vertical 2-px stripes, color order shifts with time + position
-      const shift = (this.rainbowPhase + Math.floor(px * 0.4)) & 3;
-      for (let i = 0; i < 4; i++) {
-        o.fillStyle = this.COLORS[(i + shift) & 3];
-        o.fillRect(px + i * 2, py, 2, 8);
+      // 45° diagonal wave: each pixel's color determined by (x+y) + time phase
+      // Draw pixel-by-pixel at the offscreen canvas scale (8×8 at 1px each)
+      for (let dy = 0; dy < 8; dy++) {
+        for (let dx = 0; dx < 8; dx++) {
+          const diag = (dx + dy + this.rainbowPhase) & 3;
+          o.fillStyle = this.COLORS[diag];
+          o.fillRect(px + dx, py + dy, 1, 1);
+        }
       }
       // White shimmer on top edge
       o.fillStyle = 'rgba(255,255,255,0.55)';
