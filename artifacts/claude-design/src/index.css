@@ -37,6 +37,11 @@ input[type=range]::-moz-range-thumb {
   border-radius: 0;
 }
 
+@keyframes learnPop {
+  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
 @keyframes blink {
   0%, 60% { opacity: 1; }
   61%, 100% { opacity: 0; }

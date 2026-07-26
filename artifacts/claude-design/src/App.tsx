@@ -1,4 +1,5 @@
 import React from 'react';
+import LearnPage from './LearnPage';
 
 // ── types ──────────────────────────────────────────────────────────────────
 // dx/dy: relative offset to this cell's linked pill partner (undefined = single segment)
@@ -10,7 +11,7 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; }
 
 interface State {
-  screen: 'menu' | 'play' | 'win' | 'lose';
+  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn';
   score: number;
   left: number;
   paused: boolean;
@@ -688,6 +689,10 @@ export default class App extends React.Component<{}, State> {
                   START
                 </button>
 
+                <button onClick={() => this.setState({ screen: 'learn' })} style={{ fontFamily: 'inherit', fontSize: 11, background: '#2f4bc9', color: '#ffffff', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
+                  LEARN SCORING
+                </button>
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
                   <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
                   <div style={{ textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 15, fontWeight: 600, color: '#c8c8ce', lineHeight: 1.9 }}>
@@ -698,6 +703,9 @@ export default class App extends React.Component<{}, State> {
               </div>
             </div>
           )}
+
+          {/* Learn / scoring page */}
+          {s.screen === 'learn' && <LearnPage onBack={() => this.setState({ screen: 'menu' })} />}
 
           {/* Paused overlay */}
           {isPaused && (
