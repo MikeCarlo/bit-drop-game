@@ -568,6 +568,8 @@ export default class App extends React.Component<{}, State> {
 
   touchStart(e: TouchEvent) {
     e.preventDefault();
+    // hold with one finger, tap a second finger to rotate (each tap = one rotate)
+    if (e.touches.length > 1) { this.lastTap = 0; this.rotate(); return; }
     const t = e.touches[0], now = performance.now();
     if (this.lastTap && now - this.lastTap < 320 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 50) {
       this.lastTap = 0; this.rotate();
@@ -598,7 +600,12 @@ export default class App extends React.Component<{}, State> {
     if (Math.abs(totX) > 12 || Math.abs(totY) > 12) this.lastTap = 0;
   }
 
-  touchEnd(e: TouchEvent) { e.preventDefault(); this.tstate.active = false; this.fastDrop = false; }
+  touchEnd(e: TouchEvent) {
+    e.preventDefault();
+    // ignore the second (rotate) finger lifting — only stop when all fingers are off
+    if (e.touches.length > 0) return;
+    this.tstate.active = false; this.fastDrop = false;
+  }
 
   // ── react render ───────────────────────────────────────────────────────
   render() {
@@ -698,7 +705,7 @@ export default class App extends React.Component<{}, State> {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
                   <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
                   <div style={{ textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 15, fontWeight: 600, color: '#c8c8ce', lineHeight: 1.9 }}>
-                    drag ◀▶ to move · double-tap to rotate<br />swipe ▼ to hard drop
+                    drag ◀▶ to move · hold + tap 2nd finger to rotate<br />swipe ▼ to hard drop
                   </div>
                 </div>
 
@@ -748,7 +755,7 @@ export default class App extends React.Component<{}, State> {
 
         {/* Footer hint bar */}
         <div style={{ flex: 'none', textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 14, fontWeight: 600, color: '#b4b4ba', padding: '12px 10px', lineHeight: 1.6 }}>
-          drag ◀▶ move · double-tap rotate · swipe ▼ drop
+          drag ◀▶ move · hold + tap rotate · swipe ▼ drop
         </div>
 
         {/* Landscape warning */}
