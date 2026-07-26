@@ -15,7 +15,7 @@ interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; 
 interface TutStep {
   title: string;
   text: string;
-  goal: 'move' | 'rotate' | 'drop' | 'clear' | 'clearTarget' | 'clearBig' | 'chain';
+  goal: 'move' | 'rotate' | 'drop' | 'clear' | 'clearTarget' | 'clearBig' | 'chain' | 'clearRainbow';
   need?: number;                                  // action count for move/rotate/drop
   pill?: [number, number];                        // scripted pill colors
   setup?: (g: Grid, cols: number, rows: number) => number; // builds board, returns target count
@@ -98,6 +98,13 @@ export default class App extends React.Component<{}, State> {
         g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
         g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
         g[r - 2][3] = { c: 2, t: false };
+        return 0;
+      },
+    },
+    {
+      title: 'RAINBOW BLOCK', text: 'the rainbow block matches ANY color! drop it next to the 3 reds to clear them — rainbow counts as red here!', goal: 'clearRainbow', pill: [4, 2],
+      setup: (g, _c, r) => {
+        g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false };
         return 0;
       },
     },
@@ -296,13 +303,14 @@ export default class App extends React.Component<{}, State> {
   }
 
   // Called from doClear with details of what was cleared
-  tutClear(targets: number, maxRun: number, chainAtClear: number) {
+  tutClear(targets: number, maxRun: number, chainAtClear: number, hadRainbow: boolean) {
     if (!this.isTut() || this.tutAdvance) return;
     const g = this.TUT[this.state.tutStep].goal;
     if ((g === 'clear') ||
         (g === 'clearTarget' && targets > 0) ||
         (g === 'clearBig' && maxRun >= 6) ||
-        (g === 'chain' && chainAtClear >= 2)) {
+        (g === 'chain' && chainAtClear >= 2) ||
+        (g === 'clearRainbow' && hadRainbow)) {
       this.tutAdvance = true;
       this.arp([659, 880], 70, 0.1);
     }
@@ -467,7 +475,7 @@ export default class App extends React.Component<{}, State> {
   lenBonus(len: number) { return Math.min(len - 3, 5); }
 
   doClear() {
-    let pts = 0, targets = 0, maxRun = 0;
+    let pts = 0, targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
       const cell = this.grid[y][x];
       if (!cell) continue;
@@ -475,6 +483,7 @@ export default class App extends React.Component<{}, State> {
       maxRun = Math.max(maxRun, runLen);
       pts += (cell.t ? 50 : 10) * this.chain * this.lenBonus(runLen);
       if (cell.t) targets++;
+      if (cell.c === this.RAINBOW) hadRainbow = true;
       this.burst(x, y, cell.c);
       // Unlink the partner half so it becomes a free single segment
       if (cell.dx !== undefined && cell.dy !== undefined) {
@@ -487,7 +496,7 @@ export default class App extends React.Component<{}, State> {
     const left = this.state.left - targets;
     this.setState({ score: this.state.score + pts, left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
-    this.tutClear(targets, maxRun, this.chain);
+    this.tutClear(targets, maxRun, this.chain, hadRainbow);
     this.chain++;
     this.phase = 'grav'; this.gravT = performance.now() + 120;
     if (left <= 0 && !this.isTut()) this.winPending = true;
