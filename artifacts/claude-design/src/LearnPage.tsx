@@ -136,6 +136,36 @@ const chainFrames: Frame[] = (() => {
   ];
 })();
 
+// ── animated gesture demos ──────────────────────────────────────────────────
+// A finger dot + optional second tap dot animated over a mini play area.
+function Finger({ anim, delay = 0, second = false }: { anim: string; delay?: number; second?: boolean }) {
+  return (
+    <div style={{
+      position: 'absolute', width: 22, height: 22, borderRadius: '50%',
+      background: second ? 'rgba(217,207,74,0.85)' : 'rgba(255,255,255,0.85)',
+      border: '2px solid ' + (second ? '#d9cf4a' : '#ffffff'),
+      boxShadow: '0 0 10px rgba(255,255,255,0.4)',
+      animation: `${anim} 2.4s ease-in-out ${delay}s infinite`,
+    }} />
+  );
+}
+
+function GesturePanel({ children, caption }: { children: React.ReactNode; caption: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+      <div style={{ position: 'relative', width: 120, height: 90, background: '#141416', border: '3px solid #3a3a3e', overflow: 'hidden' }}>
+        {/* mini pill in the middle */}
+        <div style={{ position: 'absolute', top: 18, left: 44, width: 32, height: 16, display: 'flex' }}>
+          <div style={{ flex: 1, background: COLORS[0] }} />
+          <div style={{ flex: 1, background: COLORS[1] }} />
+        </div>
+        {children}
+      </div>
+      <div style={{ fontSize: 7, color: '#9a9aa0', lineHeight: 1.8, textAlign: 'center', maxWidth: 130 }}>{caption}</div>
+    </div>
+  );
+}
+
 // ── section wrapper ─────────────────────────────────────────────────────────
 function Section({ title, children, demo }: { title: string; children: React.ReactNode; demo: React.ReactNode }) {
   return (
@@ -163,6 +193,27 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 2 }}>
           line up 4 or more of the same color — across or down — to clear them and score.
         </div>
+
+        <Section title="FINGER CONTROLS" demo={
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center' }}>
+            <GesturePanel caption="DRAG ◀▶ — slide left or right to move the pill">
+              <Finger anim="gestDrag" />
+            </GesturePanel>
+            <GesturePanel caption="HOLD + TAP — hold with one finger, tap with a second. each tap = one rotate">
+              <Finger anim="gestHold" />
+              <Finger anim="gestTap" second />
+            </GesturePanel>
+            <GesturePanel caption="SWIPE ▼ — flick down fast to hard drop the pill instantly">
+              <Finger anim="gestSwipe" />
+            </GesturePanel>
+            <GesturePanel caption="DOUBLE-TAP — quick tap-tap also rotates the pill">
+              <Finger anim="gestDouble" />
+            </GesturePanel>
+          </div>
+        }>
+          move, rotate and drop with simple gestures — anywhere on the board.<br />
+          keyboard also works: ◀▶ move · ▲/space rotate · ▼ fast drop · P pause.
+        </Section>
 
         <Section title="MATCH 4" demo={<DemoBoard frames={match4Frames} cols={6} rows={4} />}>
           each cleared piece = <span style={{ color: '#fff' }}>10 pts</span>.<br />
