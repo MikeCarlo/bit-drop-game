@@ -55,6 +55,7 @@ export default class App extends React.Component<{}, State> {
   phaseUntil = 0;
   fastDrop = false;
   chain = 1;
+  runLenAt = new Map<string, number>();
   winPending = false;
   // lock delay: hold the piece at the floor briefly so double-taps can rotate it
   grounded = false;
@@ -284,35 +285,47 @@ export default class App extends React.Component<{}, State> {
   }
 
   checkClears(): boolean {
-    const marks = new Set<string>();
+    // Track the longest run each cell belongs to, for length bonuses
+    const marks = new Map<string, number>();
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
       let run: [number, number][] = [], last = -1;
+      const flush = () => {
+        if (run.length >= 4) run.forEach(p => {
+          const k = p[0] + ',' + p[1];
+          marks.set(k, Math.max(marks.get(k) || 0, run.length));
+        });
+      };
       let x = sx, y = sy;
       while (x < this.cols && y < this.rows) {
         const cell = this.grid[y][x];
         if (cell && cell.c === last) run.push([x, y]);
         else {
-          if (run.length >= 4) run.forEach(p => marks.add(p[0] + ',' + p[1]));
+          flush();
           run = cell ? [[x, y]] : []; last = cell ? cell.c : -1;
         }
         x += dx; y += dy;
       }
-      if (run.length >= 4) run.forEach(p => marks.add(p[0] + ',' + p[1]));
+      flush();
     };
     for (let y = 0; y < this.rows; y++) scan(0, y, 1, 0);
     for (let x = 0; x < this.cols; x++) scan(x, 0, 0, 1);
     if (!marks.size) return false;
-    this.flash = [...marks].map(s => s.split(',').map(Number) as [number, number]);
+    this.runLenAt = marks;
+    this.flash = [...marks.keys()].map(s => s.split(',').map(Number) as [number, number]);
     this.phase = 'flash'; this.phaseUntil = performance.now() + 260;
     return true;
   }
+
+  // Length bonus: 4 in a row = x1, 5 = x2, 6 = x3, 7 = x4, 8+ = x5
+  lenBonus(len: number) { return Math.min(len - 3, 5); }
 
   doClear() {
     let pts = 0, targets = 0;
     for (const [x, y] of this.flash) {
       const cell = this.grid[y][x];
       if (!cell) continue;
-      pts += (cell.t ? 50 : 10) * this.chain;
+      const runLen = this.runLenAt.get(x + ',' + y) || 4;
+      pts += (cell.t ? 50 : 10) * this.chain * this.lenBonus(runLen);
       if (cell.t) targets++;
       this.burst(x, y, cell.c);
       // Unlink the partner half so it becomes a free single segment
