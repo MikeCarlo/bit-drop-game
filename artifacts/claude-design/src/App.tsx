@@ -53,6 +53,9 @@ export default class App extends React.Component<{}, State> {
   COLORS = ['#c23a3a', '#2f4bc9', '#d9cf4a', '#2ea043'];
   LIGHT  = ['#e07070', '#6f83e8', '#efe88e', '#6cc97c'];
   DARK   = ['#7e2222', '#1d2f85', '#9a922c', '#1c6b2c'];
+  // color index 4 = rainbow wildcard (matches any color in a run)
+  RAINBOW = 4;
+  rainbowPhase = 0; // updated each draw frame
 
   // game internals
   grid: Grid = [];
@@ -320,6 +323,11 @@ export default class App extends React.Component<{}, State> {
     return n;
   }
 
+  randColor() {
+    // Rainbow appears ~15% of the time on any individual pill half
+    return Math.random() < 0.15 ? this.RAINBOW : (Math.random() * 4) | 0;
+  }
+
   spawn() {
     if (this.isTut()) {
       const i = this.state.tutStep;
@@ -335,7 +343,7 @@ export default class App extends React.Component<{}, State> {
       return;
     }
     const x = (this.cols >> 1) - 1;
-    this.pill = { x, y: 0, dir: 0, a: (Math.random() * 4) | 0, b: (Math.random() * 4) | 0 };
+    this.pill = { x, y: 0, dir: 0, a: this.randColor(), b: this.randColor() };
     this.fastDrop = false; this.grounded = false;
     const [c1, c2] = this.pillCells();
     if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.pill = null; this.gameOver(false); return; }
@@ -415,12 +423,15 @@ export default class App extends React.Component<{}, State> {
   }
 
   checkClears(): boolean {
-    // Track the longest run each cell belongs to, for length bonuses
+    // Track the longest run each cell belongs to, for length bonuses.
+    // Rainbow (c===RAINBOW) acts as a wildcard — it adopts the run's color.
+    // A run of only rainbows has no color anchor and does NOT clear.
     const marks = new Map<string, number>();
+    const R = this.RAINBOW;
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
-      let run: [number, number][] = [], last = -1;
+      let run: [number, number][] = [], runColor = -1;
       const flush = () => {
-        if (run.length >= 4) run.forEach(p => {
+        if (run.length >= 4 && runColor !== -1) run.forEach(p => {
           const k = p[0] + ',' + p[1];
           marks.set(k, Math.max(marks.get(k) || 0, run.length));
         });
@@ -428,10 +439,14 @@ export default class App extends React.Component<{}, State> {
       let x = sx, y = sy;
       while (x < this.cols && y < this.rows) {
         const cell = this.grid[y][x];
-        if (cell && cell.c === last) run.push([x, y]);
-        else {
-          flush();
-          run = cell ? [[x, y]] : []; last = cell ? cell.c : -1;
+        if (!cell) {
+          flush(); run = []; runColor = -1;
+        } else if (cell.c === R || runColor === -1 || cell.c === runColor) {
+          // Rainbow always joins; non-rainbow sets / confirms the run color
+          if (cell.c !== R) runColor = cell.c;
+          run.push([x, y]);
+        } else {
+          flush(); run = [[x, y]]; runColor = cell.c;
         }
         x += dx; y += dy;
       }
@@ -574,11 +589,16 @@ export default class App extends React.Component<{}, State> {
   }
 
   burst(x: number, y: number, c: number) {
-    for (let i = 0; i < 7; i++) this.particles.push({
-      x: x * 8 + 4, y: y * 8 + 4,
-      vx: (Math.random() - 0.5) * 2.4, vy: -Math.random() * 2 - 0.4,
-      life: 26 + Math.random() * 14, c,
-    });
+    // Rainbow cell: spray all four colors
+    const colors = c === this.RAINBOW ? [0, 1, 2, 3] : [c];
+    for (const col of colors) {
+      const n = c === this.RAINBOW ? 4 : 7;
+      for (let i = 0; i < n; i++) this.particles.push({
+        x: x * 8 + 4, y: y * 8 + 4,
+        vx: (Math.random() - 0.5) * 2.8, vy: -Math.random() * 2.2 - 0.4,
+        life: 26 + Math.random() * 14, c: col,
+      });
+    }
   }
 
   // ── render (canvas) ────────────────────────────────────────────────────
@@ -619,6 +639,8 @@ export default class App extends React.Component<{}, State> {
     o.fillStyle = boardGrad;
     o.fillRect(0, 0, bw, bh);
 
+    // Advance rainbow stripe phase (~8 color-steps per second)
+    this.rainbowPhase = (ts * 0.008) | 0;
     const flashOn = ((ts / 70) | 0) % 2 === 0;
     const flashSet = new Set(this.flash.map(f => f[0] + ',' + f[1]));
     for (let y = 0; y < this.rows; y++) {
@@ -678,6 +700,23 @@ export default class App extends React.Component<{}, State> {
   }
 
   sprite(o: CanvasRenderingContext2D, px: number, py: number, c: number, target: boolean) {
+    if (c === this.RAINBOW) {
+      // Animated wave: 4 vertical 2-px stripes, color order shifts with time + position
+      const shift = (this.rainbowPhase + Math.floor(px * 0.4)) & 3;
+      for (let i = 0; i < 4; i++) {
+        o.fillStyle = this.COLORS[(i + shift) & 3];
+        o.fillRect(px + i * 2, py, 2, 8);
+      }
+      // White shimmer on top edge
+      o.fillStyle = 'rgba(255,255,255,0.55)';
+      o.fillRect(px, py, 8, 1);
+      o.fillRect(px, py, 1, 7);
+      // Dark bottom edge
+      o.fillStyle = 'rgba(0,0,0,0.45)';
+      o.fillRect(px, py + 7, 8, 1);
+      o.fillRect(px + 7, py, 1, 8);
+      return;
+    }
     o.fillStyle = this.COLORS[c]; o.fillRect(px, py, 8, 8);
     o.fillStyle = this.LIGHT[c]; o.fillRect(px, py, 8, 1); o.fillRect(px, py, 1, 8);
     o.fillStyle = this.DARK[c]; o.fillRect(px, py + 7, 8, 1); o.fillRect(px + 7, py, 1, 8);
