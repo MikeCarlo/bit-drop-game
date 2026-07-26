@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 // ── shared palette (mirrors App.tsx) ────────────────────────────────────────
 const COLORS = ['#c23a3a', '#2f4bc9', '#d9cf4a', '#2ea043'];
 const LIGHT  = ['#e07070', '#6f83e8', '#efe88e', '#6cc97c'];
+// Readable body font — the pixel font stays for headings only
+const BODY = 'ui-monospace,Menlo,Consolas,monospace';
 
 // A demo cell: color index, target?, visual state
 interface DCell { c: number; t?: boolean; }
@@ -161,7 +163,7 @@ function GesturePanel({ children, caption }: { children: React.ReactNode; captio
         </div>
         {children}
       </div>
-      <div style={{ fontSize: 7, color: '#9a9aa0', lineHeight: 1.8, textAlign: 'center', maxWidth: 130 }}>{caption}</div>
+      <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 12, color: '#b4b4ba', lineHeight: 1.5, textAlign: 'center', maxWidth: 140 }}>{caption}</div>
     </div>
   );
 }
@@ -171,7 +173,7 @@ function Section({ title, children, demo }: { title: string; children: React.Rea
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, borderTop: '2px solid #3a3a3e', paddingTop: 22 }}>
       <div style={{ fontSize: 12, color: '#d9cf4a' }}>{title}</div>
-      <div style={{ fontSize: 8, color: '#c8c8ce', lineHeight: 2 }}>{children}</div>
+      <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 15, color: '#c8c8ce', lineHeight: 1.7 }}>{children}</div>
       <div style={{ display: 'flex', justifyContent: 'center', padding: '14px 0 4px' }}>{demo}</div>
     </div>
   );
@@ -190,7 +192,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
           </button>
         </div>
 
-        <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 2 }}>
+        <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 15, color: '#b4b4ba', lineHeight: 1.7 }}>
           line up 4 or more of the same color — across or down — to clear them and score.
         </div>
 
@@ -237,7 +239,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
           chains stack WITH line bonuses — plan your drops!
         </Section>
 
-        <div style={{ borderTop: '2px solid #3a3a3e', paddingTop: 22, fontSize: 8, color: '#9a9aa0', lineHeight: 2.2, textAlign: 'center' }}>
+        <div style={{ borderTop: '2px solid #3a3a3e', paddingTop: 22, fontFamily: BODY, fontWeight: 600, fontSize: 14, color: '#b4b4ba', lineHeight: 1.9, textAlign: 'center' }}>
           example: 6-in-a-row with 2 targets on a x2 chain<br />
           = (50+50+10+10+10+10) x3 x2 = <span style={{ color: '#d9cf4a' }}>840 pts!</span>
         </div>

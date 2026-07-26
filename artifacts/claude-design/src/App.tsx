@@ -539,7 +539,8 @@ export default class App extends React.Component<{}, State> {
         if (this.grounded) {
           if (ts > this.lockAt) { this.grounded = false; this.lock(); }
         } else {
-          const iv = this.fastDrop ? 45 : 1000 - this.state.speed * 90;
+          // tutorial falls slowly so players can read prompts and think
+          const iv = this.fastDrop ? 45 : this.isTut() ? 1400 : 1000 - this.state.speed * 90;
           if (ts - this.lastFall > iv) {
             this.lastFall = ts;
             const p = { ...this.pill, y: this.pill.y + 1 };
@@ -785,7 +786,7 @@ export default class App extends React.Component<{}, State> {
                   <div style={{ fontSize: 26, lineHeight: 1.3, color: '#ffffff' }}>
                     BIT<span style={{ color: '#c23a3a' }}>·</span>DROP
                   </div>
-                  <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 1.8 }}>
+                  <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontWeight: 600, fontSize: 15, color: '#9a9aa0', lineHeight: 1.7 }}>
                     match 4 in a row to clear<br />wipe out every target square
                   </div>
                 </div>
@@ -863,9 +864,9 @@ export default class App extends React.Component<{}, State> {
                   SKIP ▶
                 </button>
               </div>
-              <div style={{ fontSize: 8, color: '#c8c8ce', lineHeight: 1.9 }}>{this.TUT[s.tutStep].text}</div>
+              <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontWeight: 600, fontSize: 15, color: '#e8e8ec', lineHeight: 1.55 }}>{this.TUT[s.tutStep].text}</div>
               {(this.TUT[s.tutStep].need || 1) > 1 && (
-                <div style={{ fontSize: 8, color: '#2ea043' }}>{Math.min(this.tutCount, this.TUT[s.tutStep].need!)} / {this.TUT[s.tutStep].need}</div>
+                <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontWeight: 700, fontSize: 14, color: '#2ea043' }}>{Math.min(this.tutCount, this.TUT[s.tutStep].need!)} / {this.TUT[s.tutStep].need}</div>
               )}
             </div>
           )}
@@ -875,7 +876,7 @@ export default class App extends React.Component<{}, State> {
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18, width: '100%', maxWidth: 300, textAlign: 'center' }}>
                 <div style={{ fontSize: 18, lineHeight: 1.5, color: '#2ea043' }}>TUTORIAL<br />COMPLETE!</div>
-                <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 2 }}>you know everything.<br />now go clear some targets!</div>
+                <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontWeight: 600, fontSize: 15, color: '#c8c8ce', lineHeight: 1.7 }}>you know everything.<br />now go clear some targets!</div>
                 <button onClick={() => { this.setState({ tutStep: -1 }); this.startGame(); }} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   PLAY NOW
                 </button>
