@@ -36,6 +36,8 @@ minimumReleaseAgeExclude:
 
 packages:
   - artifacts/*
+  # Isolated install: official Devvit Vite 8 must not hoist into the Replit workspace.
+  - '!artifacts/devvit-bit-drop'
   - lib/*
   - lib/integrations/*
   - scripts

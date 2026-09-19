@@ -1,0 +1,33 @@
+{
+  "name": "@workspace/devvit-bit-drop",
+  "private": true,
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "devvit playtest",
+    "login": "devvit login",
+    "typecheck": "tsc --build"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@devvit/start": "0.14.3",
+    "@devvit/web": "0.14.3",
+    "@hono/node-server": "2.1.1",
+    "devvit": "0.14.3",
+    "hono": "4.13.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.0",
+    "typescript": "~5.9.3",
+    "vite": "8.2.2"
+  }
+}

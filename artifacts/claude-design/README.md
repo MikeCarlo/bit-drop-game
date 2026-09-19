@@ -17,3 +17,5 @@ pnpm --filter @workspace/claude-design run typecheck
 Set `PLATFORM`, `ENABLE_MULTIPLAYER`, and `ENABLE_LEADERBOARD` (or the `VITE_*` forms). See [docs/reddit-phase1.md](../../docs/reddit-phase1.md) and `.env.example`.
 
 Phase 1 defaults: `web`, multiplayer **off**, leaderboard **on**.
+
+`PLATFORM=reddit` uses `RemoteLeaderboardStore` (`/api/scores`). For a working board, playtest the Devvit app — see [../devvit-bit-drop/README.md](../devvit-bit-drop/README.md).

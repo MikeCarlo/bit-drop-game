@@ -1,6 +1,6 @@
 # Bit Drop — Reddit Phase 1
 
-Prepare the existing Vite game (`artifacts/claude-design`) for a later Reddit Devvit Web publish. This phase does **not** ship a `devvit.json` app or realtime multiplayer.
+Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay now also ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published). This phase does **not** implement realtime multiplayer.
 
 ## What already existed
 
@@ -33,7 +33,10 @@ PORT=24722 pnpm --filter @workspace/claude-design run dev
 PLATFORM=web ENABLE_MULTIPLAYER=false ENABLE_LEADERBOARD=true \
   PORT=24722 pnpm --filter @workspace/claude-design run dev
 
-# Reddit-shaped build (still the Vite app; storage stays local until a Devvit adapter lands)
+# Reddit / Devvit playtest (Redis scores — must run on Reddit, not localhost)
+cd artifacts/devvit-bit-drop && pnpm run login && pnpm run dev
+
+# Reddit-shaped Vite build of the web app (uses RemoteLeaderboardStore → /api/scores)
 PLATFORM=reddit ENABLE_MULTIPLAYER=false ENABLE_LEADERBOARD=true \
   PORT=24722 pnpm --filter @workspace/claude-design run build
 
@@ -55,17 +58,18 @@ Storage talks only to `LeaderboardStore` (`src/leaderboard/types.ts`):
 
 Phase 1 implementation: `LocalLeaderboardStore` (`localStorage` key `bitdrop-scores`). It migrates the old `bitdrop-best` number into the first row and keeps that key in sync.
 
-### Switching to Reddit / Devvit Redis later
+### Reddit / Devvit Redis
 
-Do **not** rewrite the board UI. Add a `DevvitRedisStore implements LeaderboardStore` and switch on it in `createLeaderboardStore()` when `FLAGS.platform === 'reddit'`.
+Do **not** rewrite the board UI. `createLeaderboardStore()` returns `RemoteLeaderboardStore` when `FLAGS.platform === 'reddit'`. That client calls `/api/scores` on the Devvit server (`artifacts/devvit-bit-drop`).
 
 Devvit pattern (per subreddit install, not global):
 
-- Sorted set for ranks: `ZADD` / `ZREVRANGE` / `ZREVRANK`
-- Hash (or JSON string) for row metadata (`won`, settings, timestamp, username)
+- Sorted set `bitdrop:board`: `zAdd` / `zRange` (by rank) / `zRank`
+- Hash `bitdrop:rows` for row metadata (`won`, settings, timestamp, username)
+- Hash `bitdrop:best` for per-user personal best
 - Do not rely on `localStorage` for scores that must survive app updates
 
-`ScoreRecord.player` is `"You"` on web; fill the Reddit username on the remote submit path.
+`ScoreRecord.player` is `"You"` on web; the Devvit submit path overwrites it with `reddit.getCurrentUsername()`.
 
 ## Phase 2 multiplayer flag (hooks only)
 
@@ -83,4 +87,4 @@ Plug-in points (already exported, still no-ops):
 | `resolvePlayMode()` | `src/modes.ts` | Return `'compete'` once a session exists |
 | `createLeaderboardStore()` | `src/leaderboard/index.ts` | Optional shared compete board on Redis |
 
-Out of scope here: realtime 4-player competition, YouTube Playables, and a publishable `devvit.json` app.
+Out of scope here: realtime 4-player competition, YouTube Playables, and `devvit publish` (Mike publishes after playtest). The playtest app lives in `artifacts/devvit-bit-drop`.
