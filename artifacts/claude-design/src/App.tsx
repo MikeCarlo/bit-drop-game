@@ -183,8 +183,12 @@ export default class App extends React.Component<object, State> {
   }
 
   async refreshScores() {
-    const [scores, best] = await Promise.all([this.store.list(10), this.store.best()]);
-    this.setState({ scores, best: Math.max(this.state.best, best) });
+    try {
+      const [scores, best] = await Promise.all([this.store.list(10), this.store.best()]);
+      this.setState({ scores, best: Math.max(this.state.best, best) });
+    } catch (err) {
+      console.error('Failed to refresh scores', err);
+    }
   }
 
   componentWillUnmount() {
@@ -581,24 +585,28 @@ export default class App extends React.Component<object, State> {
   }
 
   async recordScore(won: boolean, score: number) {
-    const result = await this.store.submit({
-      score,
-      won,
-      width: this.state.width,
-      viruses: this.state.viruses,
-      speed: this.state.speed,
-      playedAt: Date.now(),
-      player: 'You',
-      mode: 'solo',
-    });
-    const scores = await this.store.list(10);
-    this.setState({
-      scores,
-      best: Math.max(this.state.best, result.record.score),
-      newBest: result.personalBest,
-      lastRank: result.rank,
-      lastScoreId: result.record.id,
-    });
+    try {
+      const result = await this.store.submit({
+        score,
+        won,
+        width: this.state.width,
+        viruses: this.state.viruses,
+        speed: this.state.speed,
+        playedAt: Date.now(),
+        player: 'You',
+        mode: 'solo',
+      });
+      const scores = await this.store.list(10);
+      this.setState({
+        scores,
+        best: Math.max(this.state.best, result.record.score),
+        newBest: result.personalBest,
+        lastRank: result.rank,
+        lastScoreId: result.record.id,
+      });
+    } catch (err) {
+      console.error('Failed to record score', err);
+    }
   }
 
   openScores(from: OverlayScreen) {

@@ -24,9 +24,9 @@ export type NewScore = Omit<ScoreRecord, 'id'>;
 /**
  * Storage port for the high-score board.
  *
- * Phase 1: `LocalLeaderboardStore` (localStorage).
- * Later: a Devvit Redis adapter (`ZADD` / `ZREVRANGE` / `ZREVRANK`) can
- * implement this same interface — the board UI does not change.
+ * Phase 1 web: `LocalLeaderboardStore` (localStorage).
+ * Reddit / Devvit: `RemoteLeaderboardStore` → server Redis
+ * (`zAdd` / `zRange` / `zRank`), same interface — the board UI does not change.
  */
 export interface LeaderboardStore {
   readonly kind: 'local' | 'remote';

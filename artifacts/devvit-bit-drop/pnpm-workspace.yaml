@@ -1,0 +1,2 @@
+# Isolated from the repo workspace so Vite 8 / Devvit deps do not leak.
+packages: []
