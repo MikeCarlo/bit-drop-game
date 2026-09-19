@@ -1,5 +1,9 @@
 import React from 'react';
 import LearnPage from './LearnPage';
+import { FLAGS, playModeLabel } from './flags';
+import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
+import { CompeteStub } from './ui/CompeteStub';
+import { HighScoreBoard } from './ui/HighScoreBoard';
 
 // ── types ──────────────────────────────────────────────────────────────────
 // dx/dy: relative offset to this cell's linked pill partner (undefined = single segment)
@@ -21,8 +25,10 @@ interface TutStep {
   setup?: (g: Grid, cols: number, rows: number) => number; // builds board, returns target count
 }
 
+type OverlayScreen = 'menu' | 'win' | 'lose';
+
 interface State {
-  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn';
+  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn' | 'scores';
   tutStep: number; // -1 = not in tutorial; TUT.length = completed overlay
   score: number;
   left: number;
@@ -34,10 +40,14 @@ interface State {
   speed: number;
   sound: boolean;
   landscape: boolean;
+  scores: ScoreRecord[];
+  lastScoreId: string | null;
+  lastRank: number | null;
+  scoresBack: OverlayScreen;
 }
 
 // ── game component ─────────────────────────────────────────────────────────
-export default class App extends React.Component<{}, State> {
+export default class App extends React.Component<object, State> {
   state: State = {
     screen: 'menu', tutStep: -1, score: 0, left: 0, paused: false, newBest: false,
     best: +(localStorage.getItem('bitdrop-best') || 0),
@@ -46,7 +56,13 @@ export default class App extends React.Component<{}, State> {
     speed: +(localStorage.getItem('bitdrop-s') || 4),
     sound: localStorage.getItem('bitdrop-snd') !== '0',
     landscape: false,
+    scores: [],
+    lastScoreId: null,
+    lastRank: null,
+    scoresBack: 'menu',
   };
+
+  store = createLeaderboardStore();
 
   canvasRef = React.createRef<HTMLCanvasElement>();
 
@@ -162,6 +178,13 @@ export default class App extends React.Component<{}, State> {
     cv.addEventListener('touchstart', this.touchHandlers.ts, { passive: false });
     cv.addEventListener('touchmove', this.touchHandlers.tm, { passive: false });
     cv.addEventListener('touchend', this.touchHandlers.te, { passive: false });
+
+    if (FLAGS.enableLeaderboard) void this.refreshScores();
+  }
+
+  async refreshScores() {
+    const [scores, best] = await Promise.all([this.store.list(10), this.store.best()]);
+    this.setState({ scores, best: Math.max(this.state.best, best) });
   }
 
   componentWillUnmount() {
@@ -548,11 +571,43 @@ export default class App extends React.Component<{}, State> {
 
   gameOver(won: boolean) {
     this.phase = 'idle'; this.pill = null;
+    const score = this.state.score;
     let best = this.state.best, nb = false;
-    if (this.state.score > best) { best = this.state.score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
-    this.setState({ screen: won ? 'win' : 'lose', best, newBest: nb });
+    if (score > best) { best = score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
+    this.setState({ screen: won ? 'win' : 'lose', best, newBest: nb, lastRank: null, lastScoreId: null });
     if (won) this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
     else this.arp([392, 330, 262, 196], 130, 0.16);
+    if (FLAGS.enableLeaderboard) void this.recordScore(won, score);
+  }
+
+  async recordScore(won: boolean, score: number) {
+    const result = await this.store.submit({
+      score,
+      won,
+      width: this.state.width,
+      viruses: this.state.viruses,
+      speed: this.state.speed,
+      playedAt: Date.now(),
+      player: 'You',
+      mode: 'solo',
+    });
+    const scores = await this.store.list(10);
+    this.setState({
+      scores,
+      best: Math.max(this.state.best, result.record.score),
+      newBest: result.personalBest,
+      lastRank: result.rank,
+      lastScoreId: result.record.id,
+    });
+  }
+
+  openScores(from: OverlayScreen) {
+    if (!FLAGS.enableLeaderboard) return;
+    this.setState({ screen: 'scores', scoresBack: from });
+  }
+
+  closeScores() {
+    this.setState({ screen: this.state.scoresBack });
   }
 
   // ── loop ──────────────────────────────────────────────────────────────
@@ -892,10 +947,21 @@ export default class App extends React.Component<{}, State> {
                   </button>
                 </div>
 
+                {FLAGS.enableLeaderboard && (
+                  <button onClick={() => this.openScores('menu')} style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 13, cursor: 'pointer' }}>
+                    HIGH SCORES
+                  </button>
+                )}
+
+                <CompeteStub />
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
                   <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
                   <div style={{ textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 15, fontWeight: 600, color: '#c8c8ce', lineHeight: 1.9 }}>
                     drag ◀▶ to move · hold + tap 2nd finger to rotate<br />swipe ▼ to hard drop
+                  </div>
+                  <div style={{ fontSize: 7, color: '#6e6e72', letterSpacing: 1 }}>
+                    {FLAGS.platform} · {playModeLabel()}
                   </div>
                 </div>
 
@@ -905,6 +971,15 @@ export default class App extends React.Component<{}, State> {
 
           {/* Learn / scoring page */}
           {s.screen === 'learn' && <LearnPage onBack={() => this.setState({ screen: 'menu' })} />}
+
+          {/* High score board */}
+          {s.screen === 'scores' && FLAGS.enableLeaderboard && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.97)', overflow: 'auto', zIndex: 5 }}>
+              <div style={{ maxWidth: 340, margin: '0 auto', padding: '22px 18px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <HighScoreBoard scores={s.scores} highlightId={s.lastScoreId} onBack={() => this.closeScores()} />
+              </div>
+            </div>
+          )}
 
           {/* Tutorial prompt banner */}
           {isPlaying && s.tutStep >= 0 && s.tutStep < this.TUT.length && (
@@ -959,16 +1034,27 @@ export default class App extends React.Component<{}, State> {
 
           {/* Win / Lose overlay */}
           {isOver && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18, width: '100%', maxWidth: 300, textAlign: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflow: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 300, textAlign: 'center' }}>
                 <div style={{ fontSize: 22, lineHeight: 1.4, color: overColor }}>{overTitle}</div>
                 <div style={{ fontSize: 11, lineHeight: 2 }}>score: {s.score}<br />best: {s.best}</div>
                 {s.newBest && (
                   <div style={{ fontSize: 10, color: '#d9cf4a', animation: 'blink 1s steps(1) infinite' }}>NEW BEST!</div>
                 )}
+                {FLAGS.enableLeaderboard && s.lastRank != null && (
+                  <div style={{ fontSize: 9, color: '#9a9aa0' }}>board rank #{s.lastRank}</div>
+                )}
+                {FLAGS.enableLeaderboard && (
+                  <HighScoreBoard scores={s.scores} highlightId={s.lastScoreId} compact />
+                )}
                 <button onClick={() => this.startGame()} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   PLAY AGAIN
                 </button>
+                {FLAGS.enableLeaderboard && (
+                  <button onClick={() => this.openScores(s.screen === 'win' ? 'win' : 'lose')} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2f4bc9', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
+                    HIGH SCORES
+                  </button>
+                )}
                 <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   SETTINGS
