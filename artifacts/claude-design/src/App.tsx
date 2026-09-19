@@ -51,9 +51,9 @@ export default class App extends React.Component<object, State> {
   state: State = {
     screen: 'menu', tutStep: -1, score: 0, left: 0, paused: false, newBest: false,
     best: +(localStorage.getItem('bitdrop-best') || 0),
-    width: +(localStorage.getItem('bitdrop-w') || 10),
-    viruses: +(localStorage.getItem('bitdrop-v') || 12),
-    speed: +(localStorage.getItem('bitdrop-s') || 4),
+    width: +(localStorage.getItem('bitdrop-w') || 19),
+    viruses: +(localStorage.getItem('bitdrop-v') || 4),
+    speed: +(localStorage.getItem('bitdrop-s') || 3),
     sound: localStorage.getItem('bitdrop-snd') !== '0',
     landscape: false,
     scores: [],
