@@ -76,11 +76,14 @@ Do not publish from this PR. When you are ready later: `npx devvit upload` / `np
 ## Scripts
 
 ```bash
-pnpm --filter @workspace/devvit-bit-drop run typecheck
-pnpm --filter @workspace/devvit-bit-drop run build
-pnpm --filter @workspace/devvit-bit-drop run login
-pnpm --filter @workspace/devvit-bit-drop run dev
+cd artifacts/devvit-bit-drop
+pnpm run typecheck
+pnpm run build
+pnpm run login
+pnpm run dev
 ```
+
+This folder is **not** in the repo pnpm workspace (Vite 8 / React 19 stay isolated). Run scripts from here, not `pnpm --filter` at the repo root.
 
 ## Layout
 

@@ -32,7 +32,10 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@bitdrop': bitdropSrc,
+        react: path.resolve(here, 'node_modules/react'),
+        'react-dom': path.resolve(here, 'node_modules/react-dom'),
       },
+      dedupe: ['react', 'react-dom'],
     },
     plugins: [
       react(),

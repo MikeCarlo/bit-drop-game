@@ -10,7 +10,7 @@ const BODY = 'ui-monospace, Menlo, Consolas, monospace';
 export const Splash = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const username = context.username ?? 'player';
+  const username = context?.username ?? 'player';
 
   const play = async (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) return;
