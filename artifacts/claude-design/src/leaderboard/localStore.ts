@@ -38,8 +38,10 @@ function parseRows(raw: string | null): ScoreRecord[] {
 /** Personal high-score list backed by Web Storage (localStorage in the browser). */
 export class LocalLeaderboardStore implements LeaderboardStore {
   readonly kind = 'local' as const;
+  private readonly storage: Storage;
 
-  constructor(private readonly storage: Storage) {
+  constructor(storage: Storage) {
+    this.storage = storage;
     this.migrateLegacyBest();
   }
 

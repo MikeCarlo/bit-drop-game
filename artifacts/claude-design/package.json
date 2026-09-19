@@ -6,8 +6,7 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build",
     "serve": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:leaderboard": "node --experimental-strip-types src/leaderboard/localStore.check.ts"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "react": "^18.3.1",
