@@ -23,6 +23,15 @@ test('countFlashRuns: one horizontal line of 4 is one run', () => {
   assert.equal(countFlashRuns(flash), 1);
 });
 
+test('countFlashRuns: two adjacent vertical 4s are two runs, not six', () => {
+  // Live JS would count 2 vertical + 4 two-cell horizontal neighbor pairs.
+  const flash: [number, number][] = [];
+  for (let y = 0; y < 4; y++) {
+    flash.push([0, y], [1, y]);
+  }
+  assert.equal(countFlashRuns(flash), 2);
+});
+
 test('countFlashRuns: a plus/cross counts two runs', () => {
   // 4-wide row through (2,2) and 4-tall column through (2,2)
   const flash: [number, number][] = [

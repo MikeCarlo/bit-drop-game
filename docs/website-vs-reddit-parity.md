@@ -40,7 +40,7 @@ Confirmed in `index-CWLN84aj.js` (`doClear`, `_flushDrop`, `lock`, `spawn`, `gam
 2. Per-cell base: `Math.round((cell.t ? 50 : 10) * lenBonus(runLen) * ghostMul)`  
    - `lenBonus = min(len - 3, 5)` → 4=x1, 5=x2, 6=x3, 7=x4, 8+=x5  
    - `ghostMul` is `0.65` when **GHOST BLOCK** is on (live default), else `1`. Label in UI: “-35% score when on”.
-3. Distinct H/V match-4+ runs in that flash increment `dropRunCount` (a cross / two lines in one clear adds 2). Cascades **add** to the same counters.
+3. Distinct H/V match-4+ runs increment `dropRunCount` (a cross / two lines in one clear adds 2). Cascades **add** to the same counters. Live JS counts any flashed neighbor pair (so two side-by-side vertical 4s become 6). Shared `App` counts colored 4+ scans from `checkClears` (that case is 2).
 4. **`this.chain` is incremented for SFX + the tutorial “chain” goal only.** It is **not** multiplied into points on the live site.
 5. When the sequence ends (`spawn` next pill, or `gameOver`):
 
@@ -207,6 +207,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Match-4 H/V, rainbow wildcard, targets don’t fall, lock 500 ms, fall curve `1000-speed*90` | **Parity** | Shared `App` + live. |
 | Target-gated flush scoring | **Parity after this PR** | Was **Different** (GitHub scored every clear). |
 | `dropRunCount` sequence multiplier vs `this.chain` | **Parity after this PR** | |
+| How lines are counted | **Different** (intentional) | Live: any flashed neighbor pair. Shared: colored 4+ runs from `checkClears` (avoids 6× on two adjacent vertical 4s). |
 | Ghost −35% score | **Website-only** | No ghost setting on Reddit. Equivalent to ghost **off** (mul 1). |
 | Level loop (`nextLevel`, +2 targets/level, score carries) | **Website-only / Missing on Reddit** | Reddit win is a single board, PLAY AGAIN resets score. |
 | Mid-run save / RESUME | **Website-only** | `bitdrop-save`. |

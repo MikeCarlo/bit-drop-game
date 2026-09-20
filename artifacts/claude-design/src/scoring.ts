@@ -38,17 +38,43 @@ export function cellBasePoints(isTarget: boolean): number {
   return isTarget ? 50 : 10;
 }
 
+function flashRunLen(
+  set: Set<string>,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+): number {
+  let n = 1;
+  let cx = x + dx;
+  let cy = y + dy;
+  while (set.has(`${cx},${cy}`)) {
+    n++;
+    cx += dx;
+    cy += dy;
+  }
+  return n;
+}
+
 /**
- * Count distinct horizontal and vertical runs in one flash set.
- * A cell that starts a run has no same-axis neighbor behind it and at least
- * one ahead (live `doClear` walk).
+ * Count match-4+ axis runs in one flash set.
+ *
+ * Live `doClear` increments on any flashed neighbor pair (no length check),
+ * so two side-by-side vertical 4s also count as four 2-cell "horizontal runs"
+ * and multiply by 6 instead of 2. We only count a start if the walk is 4+.
+ * `checkClears` is the source of truth (colored 4+ scans); this helper matches
+ * that for isolated lines and crosses.
  */
 export function countFlashRuns(flash: ReadonlyArray<readonly [number, number]>): number {
   const set = new Set(flash.map(([x, y]) => `${x},${y}`));
   let runs = 0;
   for (const [x, y] of flash) {
-    if (!set.has(`${x - 1},${y}`) && set.has(`${x + 1},${y}`)) runs++;
-    if (!set.has(`${x},${y - 1}`) && set.has(`${x},${y + 1}`)) runs++;
+    if (!set.has(`${x - 1},${y}`) && set.has(`${x + 1},${y}`) && flashRunLen(set, x, y, 1, 0) >= 4) {
+      runs++;
+    }
+    if (!set.has(`${x},${y - 1}`) && set.has(`${x},${y + 1}`) && flashRunLen(set, x, y, 0, 1) >= 4) {
+      runs++;
+    }
   }
   return runs;
 }

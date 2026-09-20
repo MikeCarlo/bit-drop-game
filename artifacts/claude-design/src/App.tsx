@@ -13,7 +13,6 @@ import {
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
 import {
   accumulateClear,
-  countFlashRuns,
   flushDrop,
   idleDropScore,
   type DropScoreAcc,
@@ -108,6 +107,8 @@ export default class App extends React.Component<object, State> {
   /** Mirrors state.score so a flush + immediate gameOver does not use a stale setState. */
   liveScore = 0;
   runLenAt = new Map<string, number>();
+  /** Colored match-4+ runs found by the last checkClears (not flash adjacency). */
+  clearRunCount = 0;
   winPending = false;
   // tutorial internals
   tutCount = 0;       // actions performed toward the current step's `need`
@@ -117,11 +118,11 @@ export default class App extends React.Component<object, State> {
     { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
     { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
     {
-      title: 'MATCH 4', text: 'line up 4 of a color to clear it. each piece = 10 pts. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
+      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false }; return 0; },
     },
     {
-      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
+      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 3, t: true }; g[r - 1][1] = { c: 3, t: false }; return 1; },
     },
     {
@@ -129,7 +130,7 @@ export default class App extends React.Component<object, State> {
       setup: (g, _c, r) => { for (let x = 0; x < 4; x++) g[r - 1][x] = { c: 1, t: false }; return 0; },
     },
     {
-      title: 'CHAIN REACTIONS', text: 'when a clear drops pieces into another match, the next clear scores x2, x3... complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
+      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
         g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
@@ -541,13 +542,17 @@ export default class App extends React.Component<object, State> {
     // A run of only rainbows has no color anchor and does NOT clear.
     const marks = new Map<string, number>();
     const R = this.RAINBOW;
+    let runCount = 0;
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
       let run: [number, number][] = [], runColor = -1;
       const flush = () => {
-        if (run.length >= 4 && runColor !== -1) run.forEach(p => {
-          const k = p[0] + ',' + p[1];
-          marks.set(k, Math.max(marks.get(k) || 0, run.length));
-        });
+        if (run.length >= 4 && runColor !== -1) {
+          runCount++;
+          run.forEach(p => {
+            const k = p[0] + ',' + p[1];
+            marks.set(k, Math.max(marks.get(k) || 0, run.length));
+          });
+        }
       };
       let x = sx, y = sy;
       while (x < this.cols && y < this.rows) {
@@ -569,6 +574,7 @@ export default class App extends React.Component<object, State> {
     for (let x = 0; x < this.cols; x++) scan(x, 0, 0, 1);
     if (!marks.size) return false;
     this.runLenAt = marks;
+    this.clearRunCount = runCount;
     this.flash = [...marks.keys()].map(s => s.split(',').map(Number) as [number, number]);
     this.phase = 'flash'; this.phaseUntil = performance.now() + 260;
     return true;
@@ -579,7 +585,9 @@ export default class App extends React.Component<object, State> {
 
   doClear() {
     // Live website: accumulate only. HUD score updates on spawn / gameOver flush.
-    const runCount = countFlashRuns(this.flash);
+    // Use the colored 4+ scans from checkClears, not flash-neighbor pairs.
+    const runCount = this.clearRunCount;
+    this.clearRunCount = 0;
     const scored: { t: boolean; runLen: number }[] = [];
     let targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
