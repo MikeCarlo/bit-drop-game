@@ -5,11 +5,13 @@ import {
   beginPointerTrack,
   idlePointerTrack,
   isTapRelease,
+  shouldCapturePlayGestures,
   shouldDebounceRotate,
   shouldIgnoreCompatClick,
   TAP_SLOP_PX,
   type PointerTrack,
 } from './input';
+import { BrandGutter } from './ui/BrandGutter';
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
 import {
   accumulateClear,
@@ -70,7 +72,7 @@ export default class App extends React.Component<object, State> {
     viruses: +(localStorage.getItem('bitdrop-v') || 4),
     speed: +(localStorage.getItem('bitdrop-s') || 3),
     sound: localStorage.getItem('bitdrop-snd') !== '0',
-    landscape: false,
+    landscape: typeof window !== 'undefined' ? window.matchMedia('(orientation: landscape)').matches : false,
     scores: [],
     lastScoreId: null,
     lastRank: null,
@@ -181,13 +183,14 @@ export default class App extends React.Component<object, State> {
     te: (e: TouchEvent) => void;
     tc: (e: TouchEvent) => void;
   } | null = null;
+  /** Non-passive canvas listeners — attached only while screen === 'play'. */
+  playInputBound = false;
 
   // ── lifecycle ──────────────────────────────────────────────────────────
   componentDidMount() {
     this.mq = window.matchMedia('(orientation: landscape)');
     this.onOri = () => {
-      const lnd = this.mq!.matches;
-      this.setState({ landscape: lnd, paused: lnd ? true : this.state.paused });
+      this.setState({ landscape: this.mq!.matches });
     };
     this.mq.addEventListener('change', this.onOri);
     this.setState({ landscape: this.mq.matches });
@@ -204,7 +207,6 @@ export default class App extends React.Component<object, State> {
     this.onKeyUp = (e: KeyboardEvent) => { if (e.key === 'ArrowDown') this.fastDrop = false; };
     window.addEventListener('keyup', this.onKeyUp);
 
-    const cv = this.canvasRef.current!;
     this.pointerHandlers = {
       pd: (e: PointerEvent) => this.pointerDown(e),
       pm: (e: PointerEvent) => this.pointerMove(e),
@@ -216,19 +218,59 @@ export default class App extends React.Component<object, State> {
       te: (e: TouchEvent) => this.touchEnd(e),
       tc: (e: TouchEvent) => this.touchCancel(e),
     };
-    // Pointer is the primary path (mouse + Reddit webview). Touch stays as a
-    // fallback when Pointer Events never arrive, and for a 2nd-finger rotate.
-    cv.addEventListener('pointerdown', this.pointerHandlers.pd, { passive: false });
-    cv.addEventListener('pointermove', this.pointerHandlers.pm, { passive: false });
-    cv.addEventListener('pointerup', this.pointerHandlers.pu, { passive: false });
-    cv.addEventListener('pointercancel', this.pointerHandlers.pc, { passive: false });
-    cv.addEventListener('click', this.pointerHandlers.click, { passive: false });
-    cv.addEventListener('touchstart', this.pointerHandlers.ts, { passive: false });
-    cv.addEventListener('touchmove', this.pointerHandlers.tm, { passive: false });
-    cv.addEventListener('touchend', this.pointerHandlers.te, { passive: false });
-    cv.addEventListener('touchcancel', this.pointerHandlers.tc, { passive: false });
+    // Non-passive preventDefault listeners wait until START / tutorial (play).
+    // Menu and Reddit splash must not eat wheel / touchmove.
+    this.syncPlayInput();
 
     if (FLAGS.enableLeaderboard) void this.refreshScores();
+  }
+
+  componentDidUpdate(_prevProps: object, prevState: State) {
+    if (prevState.screen !== this.state.screen) this.syncPlayInput();
+  }
+
+  syncPlayInput() {
+    if (shouldCapturePlayGestures(this.state.screen)) this.bindPlayInput();
+    else this.unbindPlayInput();
+  }
+
+  bindPlayInput() {
+    const cv = this.canvasRef.current;
+    if (!cv || !this.pointerHandlers || this.playInputBound) return;
+    const h = this.pointerHandlers;
+    // Pointer is the primary path (mouse + Reddit webview). Touch stays as a
+    // fallback when Pointer Events never arrive, and for a 2nd-finger rotate.
+    cv.addEventListener('pointerdown', h.pd, { passive: false });
+    cv.addEventListener('pointermove', h.pm, { passive: false });
+    cv.addEventListener('pointerup', h.pu, { passive: false });
+    cv.addEventListener('pointercancel', h.pc, { passive: false });
+    cv.addEventListener('click', h.click, { passive: false });
+    cv.addEventListener('touchstart', h.ts, { passive: false });
+    cv.addEventListener('touchmove', h.tm, { passive: false });
+    cv.addEventListener('touchend', h.te, { passive: false });
+    cv.addEventListener('touchcancel', h.tc, { passive: false });
+    this.playInputBound = true;
+  }
+
+  unbindPlayInput() {
+    const cv = this.canvasRef.current;
+    if (cv && this.pointerHandlers && this.playInputBound) {
+      const h = this.pointerHandlers;
+      cv.removeEventListener('pointerdown', h.pd);
+      cv.removeEventListener('pointermove', h.pm);
+      cv.removeEventListener('pointerup', h.pu);
+      cv.removeEventListener('pointercancel', h.pc);
+      cv.removeEventListener('click', h.click);
+      cv.removeEventListener('touchstart', h.ts);
+      cv.removeEventListener('touchmove', h.tm);
+      cv.removeEventListener('touchend', h.te);
+      cv.removeEventListener('touchcancel', h.tc);
+    }
+    this.playInputBound = false;
+    this.tstate = idlePointerTrack();
+    this.tapCandidate = false;
+    this.inputMode = 'none';
+    this.activePointers.clear();
   }
 
   async refreshScores() {
@@ -245,19 +287,7 @@ export default class App extends React.Component<object, State> {
     if (this.mq && this.onOri) this.mq.removeEventListener('change', this.onOri);
     if (this.onKey) window.removeEventListener('keydown', this.onKey);
     if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
-    const cv = this.canvasRef.current;
-    if (cv && this.pointerHandlers) {
-      const h = this.pointerHandlers;
-      cv.removeEventListener('pointerdown', h.pd);
-      cv.removeEventListener('pointermove', h.pm);
-      cv.removeEventListener('pointerup', h.pu);
-      cv.removeEventListener('pointercancel', h.pc);
-      cv.removeEventListener('click', h.click);
-      cv.removeEventListener('touchstart', h.ts);
-      cv.removeEventListener('touchmove', h.tm);
-      cv.removeEventListener('touchend', h.te);
-      cv.removeEventListener('touchcancel', h.tc);
-    }
+    this.unbindPlayInput();
   }
 
   // ── audio ──────────────────────────────────────────────────────────────
@@ -953,6 +983,7 @@ export default class App extends React.Component<object, State> {
   }
 
   pointerDown(e: PointerEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     // A true second contact — not the same finger arriving as both touch + pointer.
@@ -972,12 +1003,14 @@ export default class App extends React.Component<object, State> {
   }
 
   pointerMove(e: PointerEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     if (this.inputMode !== 'pointer' || !this.activePointers.has(e.pointerId)) return;
     e.preventDefault();
     this.movePrimary(e.clientX, e.clientY);
   }
 
   pointerUp(e: PointerEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     if (this.inputMode !== 'pointer') return;
     e.preventDefault();
     this.activePointers.delete(e.pointerId);
@@ -1017,6 +1050,7 @@ export default class App extends React.Component<object, State> {
   }
 
   touchStart(e: TouchEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     e.preventDefault();
     // hold with one finger, tap a second finger to rotate (each tap = one rotate)
     if (e.touches.length > 1) { this.secondFingerRotate(); return; }
@@ -1027,6 +1061,7 @@ export default class App extends React.Component<object, State> {
   }
 
   touchMove(e: TouchEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     if (this.inputMode !== 'touch' || !this.tstate.active) return;
     e.preventDefault();
     const t = e.touches[0];
@@ -1034,6 +1069,7 @@ export default class App extends React.Component<object, State> {
   }
 
   touchEnd(e: TouchEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     e.preventDefault();
     // ignore the second (rotate) finger lifting — only stop when all fingers are off
     if (e.touches.length > 0) return;
@@ -1045,6 +1081,7 @@ export default class App extends React.Component<object, State> {
   }
 
   touchCancel(e: TouchEvent) {
+    if (!shouldCapturePlayGestures(this.state.screen)) return;
     e.preventDefault();
     if (e.touches.length > 0) return;
     if (this.inputMode !== 'touch') return;
@@ -1063,9 +1100,10 @@ export default class App extends React.Component<object, State> {
     };
 
     const isMenu    = s.screen === 'menu';
-    const isPaused  = s.paused && s.screen === 'play' && !s.landscape;
+    const isPaused  = s.paused && s.screen === 'play';
     const isOver    = s.screen === 'win' || s.screen === 'lose';
     const isPlaying = s.screen === 'play';
+    const boardTouch = isPlaying ? 'none' : 'auto';
     const overTitle = s.screen === 'win' ? 'LEVEL CLEAR!' : 'GAME OVER';
     const overColor = s.screen === 'win' ? '#2ea043' : '#c23a3a';
     const sndTrack  = s.sound ? '#2ea043' : '#3a3a3e';
@@ -1074,7 +1112,11 @@ export default class App extends React.Component<object, State> {
     const sndLabel  = s.sound ? 'ON' : 'OFF';
 
     return (
-      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#1c1c1e', fontFamily: "'Press Start 2P', monospace", color: '#ffffff', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: s.landscape ? 'row' : 'column', background: '#020209', fontFamily: "'Press Start 2P', monospace", color: '#ffffff', position: 'relative', overflow: 'hidden' }}>
+
+        {s.landscape && <BrandGutter side="left" />}
+
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', flex: s.landscape ? '0 0 auto' : '1 1 auto', width: s.landscape ? 'min(100vw, max(300px, 72dvh))' : '100%', maxWidth: '100%', minWidth: s.landscape ? 260 : 0, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#1c1c1e' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 14px 10px', borderBottom: '4px solid #ffffff', flex: 'none' }}>
@@ -1088,8 +1130,8 @@ export default class App extends React.Component<object, State> {
         </div>
 
         {/* Game area */}
-        <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#6e6e6e', touchAction: 'none' }}>
-          <canvas ref={this.canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated', touchAction: 'none' }} />
+        <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#6e6e6e', touchAction: boardTouch }}>
+          <canvas ref={this.canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated', touchAction: boardTouch }} />
 
           {/* Menu overlay */}
           {isMenu && (
@@ -1275,16 +1317,9 @@ export default class App extends React.Component<object, State> {
           drag ◀▶ move · tap to rotate · swipe ▼ drop
         </div>
 
-        {/* Landscape warning */}
-        {s.landscape && (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 10, background: '#141416', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: 34, animation: 'blink 1.2s steps(1) infinite' }}>↻</div>
-              <div style={{ fontSize: 13, lineHeight: 2 }}>ROTATE YOUR<br />DEVICE</div>
-              <div style={{ fontSize: 8, color: '#9a9aa0', lineHeight: 1.8 }}>BIT·DROP plays in<br />portrait only</div>
-            </div>
-          </div>
-        )}
+        </div>
+
+        {s.landscape && <BrandGutter side="right" />}
 
       </div>
     );

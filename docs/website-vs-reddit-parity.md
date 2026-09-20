@@ -176,7 +176,7 @@ Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No level
 | Defaults | width **19**, viruses **4**, speed **3** (PR #3). Sound on. |
 | Tutorial | Same 8 goals as live. |
 | Win / lose | **LEVEL CLEAR!** / **GAME OVER**. PLAY AGAIN (same settings, score resets), HIGH SCORES, SETTINGS. No next level. |
-| Landscape | **Always** blocked (`matchMedia(orientation: landscape)`). No desktop-landscape exception. |
+| Landscape | Playable. Centered play column + block brand-art gutters (`BrandGutter`). No rotate-device overlay. Capture listeners attach only while `screen === 'play'`. |
 | Controls (PR #7) | Pointer + touch + click fallback. Single unmoved tap/click rotates (14 px slop). 2nd finger rotate. Hard-drop swipe `> 1.6` cells (live is `2.6`). Keyboard same. |
 | Scoring (after this PR) | Live flush / target-gate. Ghost mul = 1. |
 | Persistence | `bitdrop-w/v/s/snd/tut/best` + `bitdrop-scores` (web leaderboard). |
@@ -186,7 +186,7 @@ Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No level
 
 | Piece | Role |
 | --- | --- |
-| `src/client/splash.tsx` | Inline post: “hey {username} — match 4…”, **PLAY** → `requestExpandedMode(..., 'game')`. |
+| `src/client/splash.tsx` | Inline post: “hey {username} — match 4…”, **PLAY** → `requestExpandedMode(..., 'game')`. Feed-scroll-friendly CSS (`touch-action: pan-y`; no wheel/touchmove `preventDefault`). |
 | `src/client/game.tsx` | `createRoot` + shared `App`. No props, no patch. |
 | `vite.config.ts` | Alias `@bitdrop` → `../claude-design/src`. Bakes `PLATFORM=reddit`, multiplayer off, leaderboard on. React 19 vs web React 18. |
 | `src/server/core/leaderboard.ts` | Redis `bitdrop:board` (zset), `bitdrop:rows` (hash), `bitdrop:best` (per-username). Cap 20, list 10. |
@@ -228,7 +228,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Single-tap rotate | **Parity** (adapted) | Live: `touchend` &lt; 400 ms. GitHub/Reddit (PR #7): pointer/touch/click, 14 px slop, no 400 ms cap — Reddit webview swallows first tap / multitouch. |
 | Mouse/click rotate | **Different** | Live: none. GitHub/Reddit: click/pointer rotate so desktop + Devvit work. |
 | Hard-drop threshold | **Different** | Live `2.6 × cell`. GitHub `1.6 × cell` (`App.tsx` `movePrimary`). |
-| Landscape | **Different** | Live: block **mobile** landscape only. Reddit/GitHub: block all landscape. |
+| Landscape | **Different** | Live Sep-2: block **mobile** landscape only. GitHub/Reddit now: play both orientations (centered board + gutters). |
 
 ### UI / copy / settings
 
@@ -243,7 +243,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | HIGH SCORES board | **Reddit-only** (and GitHub web Phase 1) | Live: single best number. |
 | Platform footer `reddit · solo` | **Reddit-only** | `FLAGS`. |
 | Splash “hey {user} / PLAY” | **Reddit-only** | `splash.tsx`. Not the in-game menu. |
-| Portrait-only rotate blocker on desktop | **Different** | See landscape row. |
+| Portrait-only rotate blocker on desktop | **Removed on GitHub/Reddit** | Shared `App` plays landscape with brand gutters. Live Sep-2 still blocks mobile landscape. |
 
 ### Persistence / flags / backend
 
@@ -282,7 +282,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 
 **Not ported** (documented only; would be a product rebuild, not a scoring bugfix):
 
-- Levels, save/resume, ghost, next pill, popups, friend duel, desktop-landscape play, live defaults 10/12/4, 2.6-cell hard-drop threshold.
+- Levels, save/resume, ghost, next pill, popups, friend duel, live defaults 10/12/4, 2.6-cell hard-drop threshold. (Landscape play + gutters now ship on GitHub/Reddit; live Sep-2 still uses the mobile rotate blocker.)
 
 **Dropped (do not port):** music — live pause MUSIC, `musicOn`, `bitdrop-music`, level BGM loops. Shared + Reddit stay SFX-only.
 
@@ -311,8 +311,8 @@ Reddit mounts `@bitdrop/App` with no audio fork. `splash.tsx` has no audio.
 ## 5. How to re-verify
 
 ```bash
-# scoring rules + no-music paths (no browser)
-node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts artifacts/claude-design/src/audio.test.ts
+# scoring rules + no-music paths + feed-scroll / landscape guards (no browser)
+node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts artifacts/claude-design/src/audio.test.ts artifacts/claude-design/src/input.test.ts artifacts/claude-design/src/feedScroll.test.ts
 
 pnpm --filter @workspace/claude-design run typecheck
 pnpm --filter @workspace/claude-design run build

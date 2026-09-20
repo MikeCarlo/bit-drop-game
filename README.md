@@ -1,6 +1,6 @@
 # BIT·DROP
 
-Portrait puzzle game (match 4, clear target squares).
+Puzzle game (match 4, clear target squares). Plays in portrait and landscape.
 
 - **Web / Replit:** `artifacts/claude-design`
 - **Reddit playtest (Devvit Web):** `artifacts/devvit-bit-drop`
@@ -22,7 +22,7 @@ When the CLI prints **Playtest ready**, open the URL it gives you:
 
 `https://www.reddit.com/r/<test_sub>/?playtest=bit-drop`
 
-Refresh that page. Tap **PLAY** on the splash, then play in **portrait** (landscape is a rotate blocker on purpose).
+Refresh that page. Tap **PLAY** on the splash, then play in portrait or landscape. The inline splash must not trap Reddit feed scroll.
 
 Full notes: [artifacts/devvit-bit-drop/README.md](artifacts/devvit-bit-drop/README.md). Publishing (`devvit publish`) is Mike’s step after playtest.
 
