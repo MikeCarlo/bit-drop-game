@@ -1,6 +1,6 @@
 # Bit Drop (`@workspace/claude-design`)
 
-Portrait puzzle game. Landscape shows a rotate blocker by design.
+Puzzle game. Portrait is full-bleed; landscape centers the play column and fills the side gutters with block brand art.
 
 ## Scripts
 

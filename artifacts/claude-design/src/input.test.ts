@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   beginPointerTrack,
   isTapRelease,
+  shouldCapturePlayGestures,
   shouldDebounceRotate,
   shouldIgnoreCompatClick,
   TAP_SLOP_PX,
@@ -35,4 +36,13 @@ test('compat click is ignored after a handled pointer gesture', () => {
 test('duplicate pointer+touch rotates debounce', () => {
   assert.equal(shouldDebounceRotate(120, 100), true);
   assert.equal(shouldDebounceRotate(200, 100), false);
+});
+
+test('gesture capture is play-only so splash/menu do not trap scroll', () => {
+  assert.equal(shouldCapturePlayGestures('play'), true);
+  assert.equal(shouldCapturePlayGestures('menu'), false);
+  assert.equal(shouldCapturePlayGestures('learn'), false);
+  assert.equal(shouldCapturePlayGestures('scores'), false);
+  assert.equal(shouldCapturePlayGestures('win'), false);
+  assert.equal(shouldCapturePlayGestures('lose'), false);
 });

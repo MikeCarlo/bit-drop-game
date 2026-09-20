@@ -82,3 +82,12 @@ export function shouldDebounceRotate(
 ): boolean {
   return lastRotateAt > 0 && now - lastRotateAt < windowMs;
 }
+
+/**
+ * Drag / rotate / drop may call preventDefault. Only do that during active play.
+ * Menu, splash, and other overlays must leave wheel / touchmove alone so a
+ * Reddit inline post does not trap feed scroll.
+ */
+export function shouldCapturePlayGestures(screen: string): boolean {
+  return screen === 'play';
+}

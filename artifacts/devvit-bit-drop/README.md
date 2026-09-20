@@ -64,14 +64,16 @@ or set `DEVVIT_SUBREDDIT=YOUR_TEST_SUB`.
 
 Moderators can also use the subreddit menu item **Create a BIT·DROP post**.
 
-### 4. Portrait testing
+### 4. Orientation + feed scroll
 
-BIT·DROP is **portrait-only**. Landscape shows the rotate blocker on purpose.
+BIT·DROP plays in **portrait and landscape**. Landscape centers the board and fills the side gutters with block brand art. There is no rotate-device blocker.
 
-- Phone: Reddit iOS/Android app, or mobile Safari/Chrome.
-- Desktop: DevTools device mode, portrait (e.g. 390×844). A wide window will show “ROTATE YOUR DEVICE”.
+- Phone: Reddit iOS/Android app, or mobile Safari/Chrome — either orientation.
+- Desktop: a wide window is landscape play (centered column + gutters), not a blocker.
 
-Do not publish from this PR. When you are ready later: `npx devvit upload` / `npx devvit publish` (out of scope here).
+**Inline splash (Devvit-only):** `splash.css` is feed-scroll-friendly on purpose (`touch-action: pan-y`, no `overscroll-behavior: none`, no `preventDefault` on wheel/touchmove). The shared `App` only attaches capture listeners after START in expanded `game.html`. Do not copy the game sheet’s `overflow: hidden` / `touch-action: none` onto the splash — that traps Reddit feed scroll when the pointer is over the post.
+
+Do not publish from this PR. When you are ready later: `npx devvit upload` / `npx devvit publish` (out of scope here). Chief publishes after merge.
 
 ## Scripts
 

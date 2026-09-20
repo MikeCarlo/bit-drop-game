@@ -1,3 +1,16 @@
+/*
+  Inline Reddit post (splash.html only).
+
+  Devvit-only quirk: this sheet must stay feed-scroll-friendly.
+  The shared game (game.html + claude-design index.css) may use
+  overflow:hidden / overscroll-behavior:none / touch-action:none
+  because it loads only after PLAY → expanded mode (or standalone web).
+
+  Do not: preventDefault on wheel / touchmove, touch-action:none,
+  overscroll-behavior:none, or document-level capture listeners.
+  Those trap the Reddit feed when the pointer/finger is over the post.
+*/
+
 * {
   margin: 0;
   padding: 0;
@@ -9,12 +22,14 @@ body,
 #root {
   height: 100%;
   background: #1c1c1e;
-  overflow: hidden;
-  overscroll-behavior: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+  touch-action: pan-y;
   -webkit-user-select: none;
   user-select: none;
 }
 
 button {
   font-family: inherit;
+  touch-action: manipulation;
 }

@@ -1,5 +1,9 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/*
+  Standalone web + Reddit expanded game only (game.html imports this sheet).
+  Inline splash uses splash.css and must NOT inherit these scroll locks.
+*/
 html, body, #root {
   height: 100%;
   background: #1c1c1e;
@@ -9,9 +13,8 @@ html, body, #root {
   user-select: none;
 }
 
-/* Game canvas: kill iOS callout / double-tap-zoom so a single tap reaches us. */
+/* Callout only. touch-action:none is set on the canvas during play, not here. */
 canvas {
-  touch-action: none;
   -webkit-touch-callout: none;
 }
 

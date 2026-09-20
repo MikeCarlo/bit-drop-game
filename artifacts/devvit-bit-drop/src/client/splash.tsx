@@ -27,6 +27,7 @@ export const Splash = () => {
 
   return (
     <div
+      data-feed-scroll="ok"
       style={{
         height: '100%',
         display: 'flex',
@@ -36,7 +37,7 @@ export const Splash = () => {
         background: '#1c1c1e',
         color: '#ffffff',
         fontFamily: PIXEL,
-        overflow: 'hidden',
+        touchAction: 'pan-y',
       }}
     >
       <div
@@ -72,7 +73,7 @@ export const Splash = () => {
           {busy ? 'OPENING…' : 'PLAY'}
         </button>
         <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 12, color: '#8e8e94', lineHeight: 1.5 }}>
-          portrait · solo · high scores
+          solo · high scores · any orientation
         </div>
         {error && (
           <div style={{ fontFamily: BODY, fontSize: 12, color: '#c23a3a', lineHeight: 1.4 }}>{error}</div>

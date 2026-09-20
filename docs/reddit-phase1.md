@@ -10,7 +10,7 @@ Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 g
 - Screens: menu, play, win/lose, scoring (`LearnPage`), tutorial.
 - One personal best in `localStorage` key `bitdrop-best`.
 - Tutorial gate: `bitdrop-tut`. Settings: `bitdrop-w` / `bitdrop-v` / `bitdrop-s` / `bitdrop-snd` (SFX). No music — no `bitdrop-music`, no MUSIC toggle, no autoplay loop.
-- Portrait-only; landscape shows the rotate blocker on purpose.
+- Portrait and landscape. Landscape centers the play column and fills side gutters with block brand art. No rotate-device blocker.
 - **No** multiplayer, lobby, or high-score *board* (only a single best number).
 
 ## Feature flags
@@ -75,7 +75,7 @@ Devvit pattern (per subreddit install, not global):
 
 ## Phase 2 multiplayer flag (hooks only)
 
-`ENABLE_MULTIPLAYER=false` (default) hides every compete control. The game always starts solo. Tutorial and portrait UX are unchanged.
+`ENABLE_MULTIPLAYER=false` (default) hides every compete control. The game always starts solo. Tutorial UX is unchanged. Portrait and landscape both play.
 
 When the flag is **true**, `CompeteStub` appears on the menu. It does not start a match.
 
