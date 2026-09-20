@@ -1,6 +1,15 @@
 import React from 'react';
 import LearnPage from './LearnPage';
 import { FLAGS, playModeLabel } from './flags';
+import {
+  beginPointerTrack,
+  idlePointerTrack,
+  isTapRelease,
+  shouldDebounceRotate,
+  shouldIgnoreCompatClick,
+  TAP_SLOP_PX,
+  type PointerTrack,
+} from './input';
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
 import { CompeteStub } from './ui/CompeteStub';
 import { HighScoreBoard } from './ui/HighScoreBoard';
@@ -94,7 +103,7 @@ export default class App extends React.Component<object, State> {
   tutAdvance = false; // set when a clear-goal step is achieved; consumed on settle
   TUT: TutStep[] = [
     { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the pill left and right. move it 3 times!', goal: 'move', need: 3, pill: [0, 1] },
-    { title: 'ROTATE', text: 'hold with one finger, tap with a second — each tap rotates. (double-tap works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
+    { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
     { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
     {
       title: 'MATCH 4', text: 'line up 4 of a color to clear it. each piece = 10 pts. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
@@ -125,7 +134,7 @@ export default class App extends React.Component<object, State> {
       },
     },
   ];
-  // lock delay: hold the piece at the floor briefly so double-taps can rotate it
+  // lock delay: hold the piece at the floor briefly so taps can still rotate it
   grounded = false;
   lockAt = 0;
   LOCK_DELAY = 500; // ms
@@ -141,11 +150,25 @@ export default class App extends React.Component<object, State> {
   onOri: (() => void) | null = null;
   onKey: ((e: KeyboardEvent) => void) | null = null;
   onKeyUp: ((e: KeyboardEvent) => void) | null = null;
-  tstate: { active: boolean; sx: number; sy: number; rx: number; moved: boolean; t0: number; holdDir: number; holdNext: number; dropped: boolean } = { active: false, sx: 0, sy: 0, rx: 0, moved: false, t0: 0, holdDir: 0, holdNext: 0, dropped: false };
-  lastTap = 0;
-  tapX = 0;
-  tapY = 0;
-  touchHandlers: { ts: (e: TouchEvent) => void; tm: (e: TouchEvent) => void; te: (e: TouchEvent) => void } | null = null;
+  tstate: PointerTrack = idlePointerTrack();
+  /** Primary pointer/touch is a tap until it drags or hard-drops. */
+  tapCandidate = false;
+  /** 'pointer' or 'touch' owns the primary finger so both event systems don't double-handle. */
+  inputMode: 'none' | 'pointer' | 'touch' = 'none';
+  activePointers = new Set<number>();
+  gestureHandledAt = 0;
+  lastRotateAt = 0;
+  pointerHandlers: {
+    pd: (e: PointerEvent) => void;
+    pm: (e: PointerEvent) => void;
+    pu: (e: PointerEvent) => void;
+    pc: (e: PointerEvent) => void;
+    click: (e: MouseEvent) => void;
+    ts: (e: TouchEvent) => void;
+    tm: (e: TouchEvent) => void;
+    te: (e: TouchEvent) => void;
+    tc: (e: TouchEvent) => void;
+  } | null = null;
 
   // ── lifecycle ──────────────────────────────────────────────────────────
   componentDidMount() {
@@ -170,14 +193,28 @@ export default class App extends React.Component<object, State> {
     window.addEventListener('keyup', this.onKeyUp);
 
     const cv = this.canvasRef.current!;
-    this.touchHandlers = {
+    this.pointerHandlers = {
+      pd: (e: PointerEvent) => this.pointerDown(e),
+      pm: (e: PointerEvent) => this.pointerMove(e),
+      pu: (e: PointerEvent) => this.pointerUp(e),
+      pc: (e: PointerEvent) => this.pointerCancel(e),
+      click: (e: MouseEvent) => this.canvasClick(e),
       ts: (e: TouchEvent) => this.touchStart(e),
       tm: (e: TouchEvent) => this.touchMove(e),
       te: (e: TouchEvent) => this.touchEnd(e),
+      tc: (e: TouchEvent) => this.touchCancel(e),
     };
-    cv.addEventListener('touchstart', this.touchHandlers.ts, { passive: false });
-    cv.addEventListener('touchmove', this.touchHandlers.tm, { passive: false });
-    cv.addEventListener('touchend', this.touchHandlers.te, { passive: false });
+    // Pointer is the primary path (mouse + Reddit webview). Touch stays as a
+    // fallback when Pointer Events never arrive, and for a 2nd-finger rotate.
+    cv.addEventListener('pointerdown', this.pointerHandlers.pd, { passive: false });
+    cv.addEventListener('pointermove', this.pointerHandlers.pm, { passive: false });
+    cv.addEventListener('pointerup', this.pointerHandlers.pu, { passive: false });
+    cv.addEventListener('pointercancel', this.pointerHandlers.pc, { passive: false });
+    cv.addEventListener('click', this.pointerHandlers.click, { passive: false });
+    cv.addEventListener('touchstart', this.pointerHandlers.ts, { passive: false });
+    cv.addEventListener('touchmove', this.pointerHandlers.tm, { passive: false });
+    cv.addEventListener('touchend', this.pointerHandlers.te, { passive: false });
+    cv.addEventListener('touchcancel', this.pointerHandlers.tc, { passive: false });
 
     if (FLAGS.enableLeaderboard) void this.refreshScores();
   }
@@ -197,10 +234,17 @@ export default class App extends React.Component<object, State> {
     if (this.onKey) window.removeEventListener('keydown', this.onKey);
     if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
     const cv = this.canvasRef.current;
-    if (cv && this.touchHandlers) {
-      cv.removeEventListener('touchstart', this.touchHandlers.ts);
-      cv.removeEventListener('touchmove', this.touchHandlers.tm);
-      cv.removeEventListener('touchend', this.touchHandlers.te);
+    if (cv && this.pointerHandlers) {
+      const h = this.pointerHandlers;
+      cv.removeEventListener('pointerdown', h.pd);
+      cv.removeEventListener('pointermove', h.pm);
+      cv.removeEventListener('pointerup', h.pu);
+      cv.removeEventListener('pointercancel', h.pc);
+      cv.removeEventListener('click', h.click);
+      cv.removeEventListener('touchstart', h.ts);
+      cv.removeEventListener('touchmove', h.tm);
+      cv.removeEventListener('touchend', h.te);
+      cv.removeEventListener('touchcancel', h.tc);
     }
   }
 
@@ -411,16 +455,19 @@ export default class App extends React.Component<object, State> {
   }
 
   rotate() {
+    const now = performance.now();
+    if (shouldDebounceRotate(now, this.lastRotateAt)) return;
     if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
     for (const kick of [0, -1, 1]) {
       const p = { ...this.pill, dir: (this.pill.dir + 1) % 4, x: this.pill.x + kick };
       if (this.fits(p)) {
         this.pill = p;
+        this.lastRotateAt = now;
         this.beep(660, 0.05);
         this.tutHit('rotate');
         // If grounded, each rotation resets the lock timer so the player
-        // can keep double-tapping to find the right orientation
-        if (this.grounded) this.lockAt = performance.now() + this.LOCK_DELAY;
+        // can keep tapping to find the right orientation
+        if (this.grounded) this.lockAt = now + this.LOCK_DELAY;
         return;
       }
     }
@@ -814,45 +861,153 @@ export default class App extends React.Component<object, State> {
     else if (e.key === 'p') this.setState({ paused: !this.state.paused });
   }
 
-  touchStart(e: TouchEvent) {
-    e.preventDefault();
-    // hold with one finger, tap a second finger to rotate (each tap = one rotate)
-    if (e.touches.length > 1) { this.lastTap = 0; this.rotate(); return; }
-    const t = e.touches[0], now = performance.now();
-    if (this.lastTap && now - this.lastTap < 320 && Math.hypot(t.clientX - this.tapX, t.clientY - this.tapY) < 50) {
-      this.lastTap = 0; this.rotate();
-    } else { this.lastTap = now; this.tapX = t.clientX; this.tapY = t.clientY; }
-    this.tstate = { active: true, sx: t.clientX, sy: t.clientY, rx: t.clientX, moved: false, t0: now, holdDir: 0, holdNext: 0, dropped: false };
+  beginPrimary(x: number, y: number, now: number) {
+    this.tstate = beginPointerTrack(x, y, now);
+    this.tapCandidate = true;
   }
 
-  touchMove(e: TouchEvent) {
-    e.preventDefault();
+  movePrimary(x: number, y: number) {
     if (!this.tstate.active) return;
-    const t = e.touches[0], st = this.tstate, cell = this.cellPx || 30;
-    const totY = t.clientY - st.sy, totX = t.clientX - st.sx;
+    const st = this.tstate, cell = this.cellPx || 30;
+    const totY = y - st.sy, totX = x - st.sx;
+    if (Math.abs(totX) > TAP_SLOP_PX || Math.abs(totY) > TAP_SLOP_PX) this.tapCandidate = false;
     // vertical hard-drop: strong downward swipe snaps piece to bottom and locks
     if (!st.dropped && totY > cell * 1.6 && Math.abs(totX) < Math.abs(totY)) {
-      st.dropped = true; this.hardDrop(); return;
+      st.dropped = true;
+      this.tapCandidate = false;
+      this.hardDrop();
+      return;
     }
-    while (Math.abs(t.clientX - st.rx) >= cell * 0.75) {
-      const dir = t.clientX > st.rx ? 1 : -1;
+    while (Math.abs(x - st.rx) >= cell * 0.75) {
+      const dir = x > st.rx ? 1 : -1;
       this.move(dir);
       st.rx += dir * cell * 0.75;
       st.moved = true;
+      this.tapCandidate = false;
     }
-    const off = t.clientX - st.rx;
+    const off = x - st.rx;
     if (Math.abs(off) > cell * 1.2) {
       const now = performance.now();
-      if (now > st.holdNext) { this.move(off > 0 ? 1 : -1); st.holdNext = now + 110; }
+      if (now > st.holdNext) {
+        this.move(off > 0 ? 1 : -1);
+        st.holdNext = now + 110;
+        st.moved = true;
+        this.tapCandidate = false;
+      }
     }
-    if (Math.abs(totX) > 12 || Math.abs(totY) > 12) this.lastTap = 0;
+  }
+
+  endPrimary(x: number, y: number, rotateIfTap: boolean) {
+    if (rotateIfTap && this.tapCandidate && isTapRelease(this.tstate, x, y)) this.rotate();
+    this.tstate = idlePointerTrack();
+    this.tapCandidate = false;
+    this.fastDrop = false;
+  }
+
+  secondFingerRotate() {
+    this.tapCandidate = false;
+    this.rotate();
+  }
+
+  pointerDown(e: PointerEvent) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    // A true second contact — not the same finger arriving as both touch + pointer.
+    if (this.activePointers.size > 0 || e.isPrimary === false) {
+      this.secondFingerRotate();
+      return;
+    }
+    // touchstart already claimed this primary contact; don't start a second gesture.
+    if (this.inputMode === 'touch') {
+      this.activePointers.add(e.pointerId);
+      return;
+    }
+    try { (e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+    this.inputMode = 'pointer';
+    this.activePointers.add(e.pointerId);
+    this.beginPrimary(e.clientX, e.clientY, performance.now());
+  }
+
+  pointerMove(e: PointerEvent) {
+    if (this.inputMode !== 'pointer' || !this.activePointers.has(e.pointerId)) return;
+    e.preventDefault();
+    this.movePrimary(e.clientX, e.clientY);
+  }
+
+  pointerUp(e: PointerEvent) {
+    if (this.inputMode !== 'pointer') return;
+    e.preventDefault();
+    this.activePointers.delete(e.pointerId);
+    if (this.activePointers.size > 0) return;
+    this.gestureHandledAt = performance.now();
+    this.endPrimary(e.clientX, e.clientY, true);
+    this.inputMode = 'none';
+  }
+
+  pointerCancel(e: PointerEvent) {
+    if (this.inputMode !== 'pointer') return;
+    this.activePointers.delete(e.pointerId);
+    if (this.activePointers.size > 0) return;
+    // Don't mark gestureHandledAt — a trailing click is the Reddit fallback.
+    this.endPrimary(e.clientX, e.clientY, false);
+    this.inputMode = 'none';
+  }
+
+  canvasClick(e: MouseEvent) {
+    if (this.state.screen !== 'play' || this.state.paused) return;
+    const now = performance.now();
+    if (shouldIgnoreCompatClick(now, this.gestureHandledAt)) return;
+    // Mid-drag: let pointerup/touchend decide. A still-active unmoved gesture
+    // whose pointerup was swallowed (common in Devvit) can still rotate here.
+    if (this.tstate.active) {
+      if (this.tapCandidate && isTapRelease(this.tstate, e.clientX, e.clientY)) {
+        this.gestureHandledAt = now;
+        this.endPrimary(e.clientX, e.clientY, true);
+        this.inputMode = 'none';
+        this.activePointers.clear();
+      }
+      return;
+    }
+    e.preventDefault();
+    this.gestureHandledAt = now;
+    this.rotate();
+  }
+
+  touchStart(e: TouchEvent) {
+    e.preventDefault();
+    // hold with one finger, tap a second finger to rotate (each tap = one rotate)
+    if (e.touches.length > 1) { this.secondFingerRotate(); return; }
+    if (this.inputMode === 'pointer') return;
+    const t = e.touches[0];
+    this.inputMode = 'touch';
+    this.beginPrimary(t.clientX, t.clientY, performance.now());
+  }
+
+  touchMove(e: TouchEvent) {
+    if (this.inputMode !== 'touch' || !this.tstate.active) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    this.movePrimary(t.clientX, t.clientY);
   }
 
   touchEnd(e: TouchEvent) {
     e.preventDefault();
     // ignore the second (rotate) finger lifting — only stop when all fingers are off
     if (e.touches.length > 0) return;
-    this.tstate.active = false; this.fastDrop = false;
+    if (this.inputMode !== 'touch') return;
+    const t = e.changedTouches[0];
+    this.gestureHandledAt = performance.now();
+    this.endPrimary(t ? t.clientX : this.tstate.sx, t ? t.clientY : this.tstate.sy, true);
+    this.inputMode = 'none';
+  }
+
+  touchCancel(e: TouchEvent) {
+    e.preventDefault();
+    if (e.touches.length > 0) return;
+    if (this.inputMode !== 'touch') return;
+    const t = e.changedTouches[0];
+    this.endPrimary(t ? t.clientX : this.tstate.sx, t ? t.clientY : this.tstate.sy, false);
+    this.inputMode = 'none';
   }
 
   // ── react render ───────────────────────────────────────────────────────
@@ -891,7 +1046,7 @@ export default class App extends React.Component<object, State> {
 
         {/* Game area */}
         <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#6e6e6e', touchAction: 'none' }}>
-          <canvas ref={this.canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated' }} />
+          <canvas ref={this.canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated', touchAction: 'none' }} />
 
           {/* Menu overlay */}
           {isMenu && (
@@ -966,7 +1121,7 @@ export default class App extends React.Component<object, State> {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
                   <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
                   <div style={{ textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 15, fontWeight: 600, color: '#c8c8ce', lineHeight: 1.9 }}>
-                    drag ◀▶ to move · hold + tap 2nd finger to rotate<br />swipe ▼ to hard drop
+                    drag ◀▶ to move · tap to rotate<br />swipe ▼ to hard drop
                   </div>
                   <div style={{ fontSize: 7, color: '#6e6e72', letterSpacing: 1 }}>
                     {FLAGS.platform} · {playModeLabel()}
@@ -1074,7 +1229,7 @@ export default class App extends React.Component<object, State> {
 
         {/* Footer hint bar */}
         <div style={{ flex: 'none', textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 14, fontWeight: 600, color: '#b4b4ba', padding: '12px 10px', lineHeight: 1.6 }}>
-          drag ◀▶ move · hold + tap rotate · swipe ▼ drop
+          drag ◀▶ move · tap to rotate · swipe ▼ drop
         </div>
 
         {/* Landscape warning */}
