@@ -11,6 +11,13 @@ import {
   type PointerTrack,
 } from './input';
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
+import {
+  accumulateClear,
+  countFlashRuns,
+  flushDrop,
+  idleDropScore,
+  type DropScoreAcc,
+} from './scoring';
 import { CompeteStub } from './ui/CompeteStub';
 import { HighScoreBoard } from './ui/HighScoreBoard';
 
@@ -96,6 +103,10 @@ export default class App extends React.Component<object, State> {
   phaseUntil = 0;
   fastDrop = false;
   chain = 1;
+  /** Live-site drop sequence accumulator. Score is not applied until flush. */
+  dropScore: DropScoreAcc = idleDropScore();
+  /** Mirrors state.score so a flush + immediate gameOver does not use a stale setState. */
+  liveScore = 0;
   runLenAt = new Map<string, number>();
   winPending = false;
   // tutorial internals
@@ -312,7 +323,9 @@ export default class App extends React.Component<object, State> {
       if (this.runLen(x, y, 0, 1, c) + this.runLen(x, y, 0, -1, c) >= 2) continue;
       this.grid[y][x] = { c, t: true }; placed++;
     }
-    this.particles = []; this.flash = []; this.chain = 1; this.fastDrop = false; this.winPending = false; this.grounded = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
+    this.fastDrop = false; this.winPending = false; this.grounded = false;
+    this.liveScore = 0;
     this.setState({ screen: 'play', score: 0, left: placed, paused: false, newBest: false });
     this.spawn();
     this.lastFall = performance.now();
@@ -329,6 +342,7 @@ export default class App extends React.Component<object, State> {
     const cw = box.clientWidth, ch = box.clientHeight;
     this.rows = Math.max(12, Math.min(30, Math.floor(ch / (cw / this.cols))));
     this.particles = []; this.flash = []; this.dropFlashes = []; this.chain = 1;
+    this.dropScore = idleDropScore(); this.liveScore = 0;
     this.fastDrop = false; this.winPending = false; this.grounded = false; this.tutAdvance = false;
     this.setState({ screen: 'play', score: 0, paused: false, newBest: false, tutStep: 0 }, () => this.setupTutStep(0));
     this.beep(523, 0.06);
@@ -346,7 +360,8 @@ export default class App extends React.Component<object, State> {
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const targets = step.setup ? step.setup(this.grid, this.cols, this.rows) : 0;
     this.tutCount = 0; this.tutAdvance = false;
-    this.particles = []; this.flash = []; this.chain = 1; this.winPending = false; this.grounded = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
+    this.winPending = false; this.grounded = false;
     this.setState({ tutStep: i, left: targets });
     const [a, b] = step.pill || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
     this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
@@ -407,7 +422,21 @@ export default class App extends React.Component<object, State> {
     return Math.random() < 0.15 ? this.RAINBOW : (Math.random() * 4) | 0;
   }
 
+  /** Apply a finished drop sequence to liveScore / HUD. Returns the awarded pts. */
+  applyFlush(): number {
+    const result = flushDrop(this.dropScore);
+    this.dropScore = result.next;
+    if (result.pts > 0) {
+      this.liveScore += result.pts;
+      this.setState({ score: this.liveScore });
+    }
+    return result.pts;
+  }
+
   spawn() {
+    // Live website: flush the previous drop before the next pill (or tut retry).
+    this.applyFlush();
+    this.dropScore = { ...this.dropScore, chainHadTarget: false };
     if (this.isTut()) {
       const i = this.state.tutStep;
       if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
@@ -501,7 +530,7 @@ export default class App extends React.Component<object, State> {
     const bothOn = a.y >= 0 && b.y >= 0;
     if (a.y >= 0) this.grid[a.y][a.x] = { c: a.c, t: false, ...(bothOn ? { dx: b.x - a.x, dy: b.y - a.y } : {}) };
     if (b.y >= 0) this.grid[b.y][b.x] = { c: b.c, t: false, ...(bothOn ? { dx: a.x - b.x, dy: a.y - b.y } : {}) };
-    this.pill = null; this.chain = 1;
+    this.pill = null; this.chain = 1; this.dropScore = idleDropScore();
     this.beep(150, 0.07, 'triangle', 0.18);
     if (!this.checkClears()) this.spawn();
   }
@@ -549,13 +578,16 @@ export default class App extends React.Component<object, State> {
   lenBonus(len: number) { return Math.min(len - 3, 5); }
 
   doClear() {
-    let pts = 0, targets = 0, maxRun = 0, hadRainbow = false;
+    // Live website: accumulate only. HUD score updates on spawn / gameOver flush.
+    const runCount = countFlashRuns(this.flash);
+    const scored: { t: boolean; runLen: number }[] = [];
+    let targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
       const cell = this.grid[y][x];
       if (!cell) continue;
       const runLen = this.runLenAt.get(x + ',' + y) || 4;
       maxRun = Math.max(maxRun, runLen);
-      pts += (cell.t ? 50 : 10) * this.chain * this.lenBonus(runLen);
+      scored.push({ t: cell.t, runLen });
       if (cell.t) targets++;
       if (cell.c === this.RAINBOW) hadRainbow = true;
       this.burst(x, y, cell.c);
@@ -567,8 +599,9 @@ export default class App extends React.Component<object, State> {
       this.grid[y][x] = null;
     }
     this.flash = [];
+    this.dropScore = accumulateClear(this.dropScore, scored, runCount);
     const left = this.state.left - targets;
-    this.setState({ score: this.state.score + pts, left });
+    this.setState({ left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
     this.tutClear(targets, maxRun, this.chain, hadRainbow);
     this.chain++;
@@ -621,11 +654,13 @@ export default class App extends React.Component<object, State> {
   }
 
   gameOver(won: boolean) {
+    this.applyFlush();
+    this.dropScore = { ...this.dropScore, chainHadTarget: false };
     this.phase = 'idle'; this.pill = null;
-    const score = this.state.score;
+    const score = this.liveScore;
     let best = this.state.best, nb = false;
     if (score > best) { best = score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
-    this.setState({ screen: won ? 'win' : 'lose', best, newBest: nb, lastRank: null, lastScoreId: null });
+    this.setState({ screen: won ? 'win' : 'lose', score, best, newBest: nb, lastRank: null, lastScoreId: null });
     if (won) this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
     else this.arp([392, 330, 262, 196], 130, 0.16);
     if (FLAGS.enableLeaderboard) void this.recordScore(won, score);
