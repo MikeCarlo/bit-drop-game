@@ -182,8 +182,8 @@ function Section({ title, children, demo }: { title: string; children: React.Rea
 // ── page ────────────────────────────────────────────────────────────────────
 export default function LearnPage({ onBack }: { onBack: () => void }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.97)', overflow: 'auto', zIndex: 5 }}>
-      <div style={{ maxWidth: 380, margin: '0 auto', padding: '22px 18px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'Press Start 2P', monospace", color: '#fff' }}>
+    <div className="bitdrop-learn-overlay">
+      <div className="bitdrop-learn-scroll">
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 16 }}>SCORING</div>
@@ -214,7 +214,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
           </div>
         }>
           move, rotate and drop with simple gestures — anywhere on the board.<br />
-          keyboard also works: ◀▶ move · ▲/space rotate · ▼ fast drop · P pause.
+          keyboard also works: ◀▶ move · ▲/space rotate · ▼ hard drop · P pause.
         </Section>
 
         <Section title="MATCH 4" demo={<DemoBoard frames={match4Frames} cols={6} rows={4} />}>

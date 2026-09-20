@@ -4,6 +4,7 @@ import { FLAGS, playModeLabel } from './flags';
 import {
   beginPointerTrack,
   idlePointerTrack,
+  isHardDropKey,
   isTapRelease,
   shouldCapturePlayGestures,
   shouldDebounceRotate,
@@ -205,7 +206,7 @@ export default class App extends React.Component<object, State> {
     this.onKey = this.handleKey.bind(this);
     window.addEventListener('keydown', this.onKey);
 
-    this.onKeyUp = (e: KeyboardEvent) => { if (e.key === 'ArrowDown') this.fastDrop = false; };
+    this.onKeyUp = (e: KeyboardEvent) => { if (isHardDropKey(e.key)) this.fastDrop = false; };
     window.addEventListener('keyup', this.onKeyUp);
 
     this.pointerHandlers = {
@@ -928,10 +929,13 @@ export default class App extends React.Component<object, State> {
   // ── input ──────────────────────────────────────────────────────────────
   handleKey(e: KeyboardEvent) {
     if (this.state.screen !== 'play') return;
-    if (e.key === 'ArrowLeft') this.move(-1);
-    else if (e.key === 'ArrowRight') this.move(1);
+    if (e.key === 'ArrowLeft') { e.preventDefault(); this.move(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); this.move(1); }
     else if (e.key === 'ArrowUp' || e.key === ' ') { e.preventDefault(); this.rotate(); }
-    else if (e.key === 'ArrowDown') this.fastDrop = true;
+    else if (isHardDropKey(e.key)) {
+      e.preventDefault();
+      if (!e.repeat) this.hardDrop();
+    }
     else if (e.key === 'p') this.setState({ paused: !this.state.paused });
   }
 
@@ -1120,7 +1124,7 @@ export default class App extends React.Component<object, State> {
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', flex: s.landscape ? '0 0 auto' : '1 1 auto', width: s.landscape ? 'min(100vw, max(300px, 72dvh))' : '100%', maxWidth: '100%', minWidth: s.landscape ? 260 : 0, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#1c1c1e' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 14px 10px', borderBottom: '4px solid #ffffff', flex: 'none' }}>
+        <div className="bitdrop-chrome-header">
           <div style={{ fontSize: 13, lineHeight: 1 }}>score: {s.score}</div>
           <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>targets {s.left}</div>
           {isPlaying && (
@@ -1131,85 +1135,92 @@ export default class App extends React.Component<object, State> {
         </div>
 
         {/* Game area */}
-        <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#6e6e6e', touchAction: boardTouch }}>
+        <div className="bitdrop-game-area" style={{ flex: 1, position: 'relative', minHeight: 0, background: '#6e6e6e', touchAction: boardTouch }}>
           <canvas ref={this.canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated', touchAction: boardTouch }} />
 
-          {/* Menu overlay */}
+          {/* Menu overlay — overflow hidden; chrome shrinks to fit. Never overflow:auto. */}
           {isMenu && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflow: 'auto' }}>
-              <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 34 }}>
+            <div className="bitdrop-menu-overlay" data-testid="bitdrop-menu-overlay">
+              <div className="bitdrop-menu-panel">
 
-                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ fontSize: 26, lineHeight: 1.3, color: '#ffffff' }}>
+                <div className="bitdrop-menu-brand">
+                  <div className="bitdrop-menu-title">
                     BIT<span style={{ color: '#c23a3a' }}>·</span>DROP
                   </div>
-                  <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontWeight: 600, fontSize: 15, color: '#9a9aa0', lineHeight: 1.7 }}>
-                    match 4 in a row to clear<br />wipe out every target square
+                  <div className="bitdrop-menu-tagline">
+                    match 4, clear the targets
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}>
-                    <span style={{ color: '#9a9aa0' }}>BOARD WIDTH</span>
-                    <span style={{ color: '#d9cf4a' }}>{s.width}</span>
+                <div className="bitdrop-menu-settings">
+                  <div className="bitdrop-menu-slider">
+                    <div className="bitdrop-menu-slider-head">
+                      <span>BOARD WIDTH</span>
+                      <span>{s.width}</span>
+                    </div>
+                    <input type="range" min={8} max={24} step={1} value={s.width} onChange={set('width', 'bitdrop-w')} />
                   </div>
-                  <input type="range" min={8} max={24} step={1} value={s.width} onChange={set('width', 'bitdrop-w')} />
+
+                  <div className="bitdrop-menu-slider">
+                    <div className="bitdrop-menu-slider-head">
+                      <span>TARGET SQUARES</span>
+                      <span>{s.viruses}</span>
+                    </div>
+                    <input type="range" min={4} max={40} step={1} value={s.viruses} onChange={set('viruses', 'bitdrop-v')} />
+                  </div>
+
+                  <div className="bitdrop-menu-slider">
+                    <div className="bitdrop-menu-slider-head">
+                      <span>SPEED</span>
+                      <span>{s.speed}</span>
+                    </div>
+                    <input type="range" min={1} max={9} step={1} value={s.speed} onChange={set('speed', 'bitdrop-s')} />
+                  </div>
+
+                  <div className="bitdrop-menu-sound">
+                    <span className="bitdrop-menu-sound-label">SOUND</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="bitdrop-menu-sound-state" style={{ color: s.sound ? '#2ea043' : '#9a9aa0' }}>{sndLabel}</span>
+                      <button
+                        className="bitdrop-snd-toggle"
+                        onClick={() => { const v = !s.sound; this.setState({ sound: v }); localStorage.setItem('bitdrop-snd', v ? '1' : '0'); }}
+                        style={{ background: sndTrack }}
+                      >
+                        <span className="bitdrop-snd-knob" style={{ left: sndKnobL, right: sndKnobR }} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}>
-                    <span style={{ color: '#9a9aa0' }}>TARGET SQUARES</span>
-                    <span style={{ color: '#d9cf4a' }}>{s.viruses}</span>
-                  </div>
-                  <input type="range" min={4} max={40} step={1} value={s.viruses} onChange={set('viruses', 'bitdrop-v')} />
-                </div>
+                <div className="bitdrop-menu-actions">
+                  <button className="bitdrop-btn bitdrop-btn-start" onClick={() => localStorage.getItem('bitdrop-tut') ? this.startGame() : this.startTutorial()}>
+                    START
+                  </button>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}>
-                    <span style={{ color: '#9a9aa0' }}>SPEED</span>
-                    <span style={{ color: '#d9cf4a' }}>{s.speed}</span>
-                  </div>
-                  <input type="range" min={1} max={9} step={1} value={s.speed} onChange={set('speed', 'bitdrop-s')} />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 9, color: '#9a9aa0' }}>SOUND</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 9, color: s.sound ? '#2ea043' : '#9a9aa0', minWidth: 30, textAlign: 'right' }}>{sndLabel}</span>
-                    <button onClick={() => { const v = !s.sound; this.setState({ sound: v }); localStorage.setItem('bitdrop-snd', v ? '1' : '0'); }}
-                      style={{ fontFamily: 'inherit', width: 56, height: 26, padding: 0, background: sndTrack, border: '3px solid #141416', cursor: 'pointer', position: 'relative' }}>
-                      <span style={{ position: 'absolute', top: 0, bottom: 0, width: 24, background: '#d9cf4a', left: sndKnobL, right: sndKnobR }} />
+                  <div className="bitdrop-menu-actions-row">
+                    <button className="bitdrop-btn bitdrop-btn-tut" onClick={() => this.startTutorial()}>
+                      TUTORIAL
+                    </button>
+                    <button className="bitdrop-btn bitdrop-btn-learn" onClick={() => this.setState({ screen: 'learn' })}>
+                      SCORING
                     </button>
                   </div>
+
+                  {FLAGS.enableLeaderboard && (
+                    <button className="bitdrop-btn bitdrop-btn-high" onClick={() => this.openScores('menu')}>
+                      HIGH SCORES
+                    </button>
+                  )}
+
+                  <CompeteStub />
                 </div>
 
-                <button onClick={() => localStorage.getItem('bitdrop-tut') ? this.startGame() : this.startTutorial()} style={{ fontFamily: 'inherit', fontSize: 14, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 16, cursor: 'pointer', marginTop: 4 }}>
-                  START
-                </button>
-
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => this.startTutorial()} style={{ flex: 1, fontFamily: 'inherit', fontSize: 10, background: '#d9cf4a', color: '#141416', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
-                    TUTORIAL
-                  </button>
-                  <button onClick={() => this.setState({ screen: 'learn' })} style={{ flex: 1, fontFamily: 'inherit', fontSize: 10, background: '#2f4bc9', color: '#ffffff', border: '4px solid #ffffff', padding: 13, cursor: 'pointer' }}>
-                    SCORING
-                  </button>
-                </div>
-
-                {FLAGS.enableLeaderboard && (
-                  <button onClick={() => this.openScores('menu')} style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 13, cursor: 'pointer' }}>
-                    HIGH SCORES
-                  </button>
-                )}
-
-                <CompeteStub />
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
-                  <div style={{ fontSize: 11, color: '#ffffff' }}>best: {s.best}</div>
-                  <div style={{ textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 15, fontWeight: 600, color: '#c8c8ce', lineHeight: 1.9 }}>
-                    drag ◀▶ to move · tap to rotate<br />swipe ▼ to hard drop
+                <div className="bitdrop-menu-meta">
+                  <div className="bitdrop-menu-best">best: {s.best}</div>
+                  <div className="bitdrop-menu-hint">
+                    drag ◀▶ to move · tap to rotate · swipe ▼ to hard drop
                   </div>
-                  <div style={{ fontSize: 7, color: '#6e6e72', letterSpacing: 1 }}>
+                  <div className="bitdrop-menu-platform">
                     {FLAGS.platform} · {playModeLabel()}
                   </div>
                   <ReportFeedback />
@@ -1224,8 +1235,8 @@ export default class App extends React.Component<object, State> {
 
           {/* High score board */}
           {s.screen === 'scores' && FLAGS.enableLeaderboard && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.97)', overflow: 'auto', zIndex: 5 }}>
-              <div style={{ maxWidth: 340, margin: '0 auto', padding: '22px 18px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div className="bitdrop-scores-overlay" data-testid="bitdrop-scores-overlay">
+              <div className="bitdrop-scores-panel">
                 <HighScoreBoard scores={s.scores} highlightId={s.lastScoreId} onBack={() => this.closeScores()} />
               </div>
             </div>
@@ -1284,8 +1295,8 @@ export default class App extends React.Component<object, State> {
 
           {/* Win / Lose overlay */}
           {isOver && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,22,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflow: 'auto' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 300, textAlign: 'center' }}>
+            <div className="bitdrop-end-overlay">
+              <div className="bitdrop-end-panel">
                 <div style={{ fontSize: 22, lineHeight: 1.4, color: overColor }}>{overTitle}</div>
                 <div style={{ fontSize: 11, lineHeight: 2 }}>score: {s.score}<br />best: {s.best}</div>
                 {s.newBest && (
@@ -1315,7 +1326,7 @@ export default class App extends React.Component<object, State> {
         </div>
 
         {/* Footer hint bar */}
-        <div style={{ flex: 'none', textAlign: 'center', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 14, fontWeight: 600, color: '#b4b4ba', padding: '12px 10px', lineHeight: 1.6 }}>
+        <div className="bitdrop-chrome-footer">
           drag ◀▶ move · tap to rotate · swipe ▼ drop
         </div>
 

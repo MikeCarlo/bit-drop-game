@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import {
   beginPointerTrack,
+  isHardDropKey,
   isTapRelease,
   shouldCapturePlayGestures,
   shouldDebounceRotate,
@@ -36,6 +40,22 @@ test('compat click is ignored after a handled pointer gesture', () => {
 test('duplicate pointer+touch rotates debounce', () => {
   assert.equal(shouldDebounceRotate(120, 100), true);
   assert.equal(shouldDebounceRotate(200, 100), false);
+});
+
+test('ArrowDown is a hard-drop key, not a soft-drop hold', () => {
+  assert.equal(isHardDropKey('ArrowDown'), true);
+  assert.equal(isHardDropKey('Down'), true);
+  assert.equal(isHardDropKey('ArrowUp'), false);
+  assert.equal(isHardDropKey(' '), false);
+  assert.equal(isHardDropKey('s'), false);
+});
+
+test('shared App maps ArrowDown to hardDrop, not fastDrop', () => {
+  const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'App.tsx'), 'utf8');
+  const handle = app.slice(app.indexOf('handleKey'), app.indexOf('beginPrimary'));
+  assert.match(handle, /isHardDropKey\(e\.key\)/);
+  assert.match(handle, /this\.hardDrop\(\)/);
+  assert.doesNotMatch(handle, /fastDrop\s*=\s*true/);
 });
 
 test('gesture capture is play-only so splash/menu do not trap scroll', () => {
