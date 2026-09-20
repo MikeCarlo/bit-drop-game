@@ -1,3 +1,4 @@
+import './game-entry.css';
 import '@bitdrop/index.css';
 
 import { StrictMode } from 'react';

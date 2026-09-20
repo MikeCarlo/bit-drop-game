@@ -12,6 +12,7 @@ import {
   type PointerTrack,
 } from './input';
 import { BrandGutter } from './ui/BrandGutter';
+import { ReportFeedback } from './ui/ReportFeedback';
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
 import {
   accumulateClear,
@@ -1211,6 +1212,7 @@ export default class App extends React.Component<object, State> {
                   <div style={{ fontSize: 7, color: '#6e6e72', letterSpacing: 1 }}>
                     {FLAGS.platform} · {playModeLabel()}
                   </div>
+                  <ReportFeedback />
                 </div>
 
               </div>

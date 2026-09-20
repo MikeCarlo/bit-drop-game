@@ -5,3 +5,7 @@ declare module '@bitdrop/App' {
 }
 
 declare module '@bitdrop/index.css';
+declare module '@bitdrop/ui/ReportFeedback' {
+  import type { ComponentType } from 'react';
+  export const ReportFeedback: ComponentType<{ compact?: boolean; subreddit?: string }>;
+}

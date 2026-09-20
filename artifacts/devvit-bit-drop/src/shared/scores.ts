@@ -12,6 +12,8 @@ export type ScoreRecord = {
   playedAt: number;
   player: string;
   mode: PlayMode;
+  /** Reddit post the score was submitted from (server fills this). */
+  postId?: string;
 };
 
 export type SubmitResult = {
