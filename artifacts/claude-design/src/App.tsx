@@ -154,7 +154,7 @@ export default class App extends React.Component<object, State> {
   off: HTMLCanvasElement = document.createElement('canvas');
   cellPx = 30;
 
-  // audio
+  // SFX only (beep / arp / dropSound). No music loop, music localStorage, or MUSIC toggle.
   ac: AudioContext | null = null;
 
   // input

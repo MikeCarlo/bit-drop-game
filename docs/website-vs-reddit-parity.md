@@ -18,6 +18,8 @@ Do not republish to Reddit from this work; Chief ships after merge.
 
 The live Replit app is **not** the same build as GitHub `artifacts/claude-design`. It is an older, fuller game (levels, friend duel, ghost, save, music) published 2026-09-02. Reddit plays the **Phase 1 GitHub `App`**, not that Sep-2 bundle.
 
+**Music (Mike, 2026-09-20):** none on either app in this repo. Keep SFX (`sound` / `bitdrop-snd`). The Sep-2 Replit bundle still has `musicOn`, `bitdrop-music`, pause **MUSIC**, and `ensureMusic().play(level)` — that published JS is outside GitHub. GitHub web + Reddit have zero music paths (see [Audio](#audio-sfx-only-no-music)). Do not port music from the live bundle.
+
 Three columns matter:
 
 1. **Live website** — original product Mike is comparing against.
@@ -233,7 +235,8 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Item | Status | Notes |
 | --- | --- | --- |
 | Pixel HUD, Press Start 2P, pause, tutorial banners | **Parity** | |
-| SETTINGS+ accordion, GHOST, MUSIC | **Website-only** | GitHub shows sliders always; SFX only. |
+| SETTINGS+ accordion, GHOST | **Website-only** | GitHub shows sliders always. |
+| MUSIC / `bitdrop-music` / `ensureMusic` | **Dropped** | Live Sep-2 only. Mike: no music on web or Reddit. SFX stays. |
 | Menu defaults | **Different** | Live 10 / 12 / 4. GitHub/Reddit 19 / 4 / 3 (`App.tsx` state + PR #3). |
 | Win chrome | **Different** | Live NEXT LEVEL + summary. Reddit LEVEL CLEAR + leaderboard rank. |
 | Learn page target-gate copy | **Parity after this PR** | Live Learn still omits the gate (stale vs its own JS). |
@@ -279,17 +282,37 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 
 **Not ported** (documented only; would be a product rebuild, not a scoring bugfix):
 
-- Levels, save/resume, ghost, music, next pill, popups, friend duel, desktop-landscape play, live defaults 10/12/4, 2.6-cell hard-drop threshold.
+- Levels, save/resume, ghost, next pill, popups, friend duel, desktop-landscape play, live defaults 10/12/4, 2.6-cell hard-drop threshold.
 
-If Mike wants those on Reddit, treat them as a Phase follow-up against the Sep-2 bundle, not as “Reddit scored wrong.”
+**Dropped (do not port):** music — live pause MUSIC, `musicOn`, `bitdrop-music`, level BGM loops. Shared + Reddit stay SFX-only.
+
+If Mike wants the other live-only systems on Reddit, treat them as a Phase follow-up against the Sep-2 bundle, not as “Reddit scored wrong.”
+
+---
+
+## Audio (SFX only, no music)
+
+Live Sep-2 (`index-CWLN84aj.js`) has a WebAudio music engine (`class Sd`), `state.musicOn` default on via `bitdrop-music`, `ensureMusic().play(level)` when entering play / changing level, `music.stop()` on leave, `setGamePaused` / `setSoundOn`, and a pause-menu **MUSIC** toggle. Home settings on that bundle expose SOUND + GHOST, not MUSIC.
+
+GitHub `App` + Devvit `game.tsx` (same `App`):
+
+| Path | Status |
+| --- | --- |
+| Menu SOUND / `bitdrop-snd` | **Kept** — SFX gate for `beep`, `arp`, `dropSound` |
+| `musicOn`, `this.music`, `ensureMusic` | **Absent** |
+| `localStorage` `bitdrop-music` | **Unread / unwritten** (stale key from the live site is ignored) |
+| Pause **MUSIC** | **Absent** — pause is RESUME / QUIT only |
+| Autoplay BGM | **Absent** |
+
+Reddit mounts `@bitdrop/App` with no audio fork. `splash.tsx` has no audio.
 
 ---
 
 ## 5. How to re-verify
 
 ```bash
-# scoring rules (no browser)
-node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts
+# scoring rules + no-music paths (no browser)
+node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts artifacts/claude-design/src/audio.test.ts
 
 pnpm --filter @workspace/claude-design run typecheck
 pnpm --filter @workspace/claude-design run build

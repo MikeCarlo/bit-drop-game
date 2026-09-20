@@ -9,7 +9,7 @@ Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 g
 - Single-player Dr. Mario–style puzzle in `artifacts/claude-design`.
 - Screens: menu, play, win/lose, scoring (`LearnPage`), tutorial.
 - One personal best in `localStorage` key `bitdrop-best`.
-- Tutorial gate: `bitdrop-tut`. Settings: `bitdrop-w` / `bitdrop-v` / `bitdrop-s` / `bitdrop-snd`.
+- Tutorial gate: `bitdrop-tut`. Settings: `bitdrop-w` / `bitdrop-v` / `bitdrop-s` / `bitdrop-snd` (SFX). No music — no `bitdrop-music`, no MUSIC toggle, no autoplay loop.
 - Portrait-only; landscape shows the rotate blocker on purpose.
 - **No** multiplayer, lobby, or high-score *board* (only a single best number).
 
