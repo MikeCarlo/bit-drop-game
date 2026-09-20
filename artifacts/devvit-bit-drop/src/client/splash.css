@@ -9,7 +9,18 @@
   Do not: preventDefault on wheel / touchmove, touch-action:none,
   overscroll-behavior:none, or document-level capture listeners.
   Those trap the Reddit feed when the pointer/finger is over the post.
+
+  Font: Press Start 2P is self-hosted below (./fonts/).
+  Do not add fonts.googleapis.com / fonts.gstatic.com links here.
 */
+
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('./fonts/PressStart2P-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 * {
   margin: 0;

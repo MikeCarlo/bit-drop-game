@@ -189,7 +189,7 @@ Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No level
 | `src/client/splash.tsx` | Inline post: “hey {username} — match 4…”, **PLAY** → `requestExpandedMode(..., 'game')`. Feed-scroll-friendly CSS (`touch-action: pan-y`; no wheel/touchmove `preventDefault`). |
 | `src/client/game.tsx` | `createRoot` + shared `App`. No props, no patch. |
 | `vite.config.ts` | Alias `@bitdrop` → `../claude-design/src`. Bakes `PLATFORM=reddit`, multiplayer off, leaderboard on. React 19 vs web React 18. |
-| `src/server/core/leaderboard.ts` | Redis `bitdrop:board` (zset), `bitdrop:rows` (hash), `bitdrop:best` (per-username). Cap 20, list 10. |
+| `src/server/core/leaderboard.ts` | Redis `bitdrop:board` (zset), `bitdrop:rows` (hash), `bitdrop:best` (per-username). Cap 20, list 10. 30-day TTL + PostDelete scrub. |
 | `src/server/routes/api.ts` | `GET /api/init` (unused by client), `GET/POST /api/scores`, `GET /api/scores/best`. Submit overwrites `player` with `reddit.getCurrentUsername()`. |
 | `src/server/core/post.ts` | Custom post title `BIT·DROP — match 4, clear the targets`. |
 | Menu / trigger | Mod: “Create a BIT·DROP post”. `onAppInstall` creates a post. |
@@ -312,7 +312,7 @@ Reddit mounts `@bitdrop/App` with no audio fork. `splash.tsx` has no audio.
 
 ```bash
 # scoring rules + no-music paths + feed-scroll / landscape guards (no browser)
-node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts artifacts/claude-design/src/audio.test.ts artifacts/claude-design/src/input.test.ts artifacts/claude-design/src/feedScroll.test.ts
+node --experimental-strip-types --test artifacts/claude-design/src/scoring.test.ts artifacts/claude-design/src/audio.test.ts artifacts/claude-design/src/input.test.ts artifacts/claude-design/src/feedScroll.test.ts artifacts/claude-design/src/report.test.ts artifacts/claude-design/src/fonts.test.ts artifacts/devvit-bit-drop/src/shared/retention.test.ts
 
 pnpm --filter @workspace/claude-design run typecheck
 pnpm --filter @workspace/claude-design run build

@@ -67,8 +67,10 @@ Do **not** rewrite the board UI. `createLeaderboardStore()` returns `RemoteLeade
 Devvit pattern (per subreddit install, not global):
 
 - Sorted set `bitdrop:board`: `zAdd` / `zRange` (by rank) / `zRank`
-- Hash `bitdrop:rows` for row metadata (`won`, settings, timestamp, username)
+- Hash `bitdrop:rows` for row metadata (`won`, settings, timestamp, username, `postId`)
 - Hash `bitdrop:best` for per-user personal best
+- 30-day Redis `expire` on those keys, plus prune-by-`playedAt` and a daily scheduler
+- `onPostDelete` drops rows submitted from the deleted post (usernames go with them)
 - Do not rely on `localStorage` for scores that must survive app updates
 
 `ScoreRecord.player` is `"You"` on web; the Devvit submit path overwrites it with `reddit.getCurrentUsername()`.

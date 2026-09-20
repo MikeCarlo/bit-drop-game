@@ -1,6 +1,7 @@
 import './splash.css';
 
 import { context, requestExpandedMode } from '@devvit/web/client';
+import { ReportFeedback } from '@bitdrop/ui/ReportFeedback';
 import { StrictMode, useState, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -74,6 +75,9 @@ export const Splash = () => {
         </button>
         <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 12, color: '#8e8e94', lineHeight: 1.5 }}>
           solo · high scores · any orientation
+        </div>
+        <div style={{ fontFamily: BODY, fontSize: 12, lineHeight: 1.5 }}>
+          <ReportFeedback />
         </div>
         {error && (
           <div style={{ fontFamily: BODY, fontSize: 12, color: '#c23a3a', lineHeight: 1.4 }}>{error}</div>

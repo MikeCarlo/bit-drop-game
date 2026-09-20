@@ -11,6 +11,8 @@ export interface ScoreRecord {
   /** Display name. Phase 1 web uses "You"; Reddit can fill the username later. */
   player: string;
   mode: PlayMode;
+  /** Reddit post the score was submitted from (Devvit only). */
+  postId?: string;
 }
 
 export interface SubmitResult {

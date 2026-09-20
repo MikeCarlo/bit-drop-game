@@ -26,11 +26,28 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
+      },
+      {
+        "label": "Report / feedback",
+        "description": "Message r/BitDropGame about this app",
+        "location": "post",
+        "forUserType": "user",
+        "postFilter": "currentApp",
+        "endpoint": "/internal/menu/report"
       }
     ]
   },
   "triggers": {
-    "onAppInstall": "/internal/triggers/on-app-install"
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onPostDelete": "/internal/triggers/on-post-delete"
+  },
+  "scheduler": {
+    "tasks": {
+      "prune-scores": {
+        "endpoint": "/internal/triggers/prune-scores",
+        "cron": "0 4 * * *"
+      }
+    }
   },
   "scripts": {
     "dev": "vite build --watch",
