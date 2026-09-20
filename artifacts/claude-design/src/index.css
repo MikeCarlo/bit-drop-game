@@ -46,6 +46,360 @@ input[type=range]::-moz-range-thumb {
   border-radius: 0;
 }
 
+/*
+  In-app menu: NEVER scroll. Short viewports shrink chrome/gaps/type via
+  container queries on the board (header + footer sit outside this box).
+  Do not put overflow:auto on .bitdrop-menu-overlay.
+*/
+.bitdrop-game-area {
+  container-type: size;
+  container-name: bitdrop-board;
+}
+
+.bitdrop-chrome-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: clamp(6px, 1.4dvh, 12px) 14px clamp(4px, 1.1dvh, 10px);
+  border-bottom: 4px solid #ffffff;
+  flex: none;
+}
+
+.bitdrop-chrome-footer {
+  flex: none;
+  text-align: center;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: clamp(11px, 1.8dvh, 14px);
+  font-weight: 600;
+  color: #b4b4ba;
+  padding: clamp(4px, 1.3dvh, 12px) 10px;
+  line-height: 1.45;
+}
+
+.bitdrop-menu-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.94);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: clamp(4px, 1.2cqh, 16px) clamp(8px, 2.4cqi, 20px);
+  overflow: hidden;
+}
+
+.bitdrop-menu-overlay,
+.bitdrop-menu-overlay * {
+  scrollbar-width: none;
+}
+
+.bitdrop-menu-overlay::-webkit-scrollbar,
+.bitdrop-menu-overlay *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.bitdrop-menu-panel {
+  width: 100%;
+  max-width: min(420px, 100%);
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(4px, 1.6cqh, 18px);
+  overflow: hidden;
+}
+
+.bitdrop-menu-brand {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.7cqh, 8px);
+  flex: 0 0 auto;
+}
+
+.bitdrop-menu-title {
+  font-size: clamp(13px, 3.2cqh, 24px);
+  line-height: 1.25;
+  color: #ffffff;
+}
+
+.bitdrop-menu-tagline {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 600;
+  font-size: clamp(11px, 1.7cqh, 14px);
+  color: #9a9aa0;
+  line-height: 1.4;
+}
+
+.bitdrop-menu-settings {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(5px, 1.3cqh, 12px);
+  flex: 0 0 auto;
+}
+
+.bitdrop-menu-slider {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2px, 0.55cqh, 7px);
+  min-width: 0;
+}
+
+.bitdrop-menu-slider-head,
+.bitdrop-menu-sound-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: clamp(7px, 1.25cqh, 9px);
+  gap: 8px;
+  color: #9a9aa0;
+}
+
+.bitdrop-menu-slider-head > span:last-child {
+  color: #d9cf4a;
+}
+
+.bitdrop-menu-sound {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bitdrop-menu-sound-state {
+  font-size: clamp(7px, 1.25cqh, 9px);
+  min-width: 28px;
+  text-align: right;
+}
+
+.bitdrop-snd-toggle {
+  font-family: inherit;
+  width: 52px;
+  height: clamp(18px, 3cqh, 26px);
+  padding: 0;
+  border: 3px solid #141416;
+  cursor: pointer;
+  position: relative;
+  flex: none;
+}
+
+.bitdrop-snd-knob {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  background: #d9cf4a;
+}
+
+.bitdrop-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 1.1cqh, 10px);
+  flex: 0 0 auto;
+}
+
+.bitdrop-menu-actions-row {
+  display: flex;
+  gap: clamp(6px, 1.4cqi, 10px);
+}
+
+.bitdrop-btn {
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.bitdrop-btn-start {
+  font-size: clamp(11px, 2cqh, 14px);
+  background: #2ea043;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.5cqh, 14px);
+}
+
+.bitdrop-btn-tut {
+  flex: 1;
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #d9cf4a;
+  color: #141416;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
+.bitdrop-btn-learn {
+  flex: 1;
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #2f4bc9;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
+.bitdrop-btn-high {
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #3a3a3e;
+  color: #ffffff;
+  border: 3px solid #6e6e72;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
+.bitdrop-menu-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 0.8cqh, 10px);
+  flex: 0 0 auto;
+}
+
+.bitdrop-menu-best {
+  font-size: clamp(9px, 1.55cqh, 11px);
+  color: #ffffff;
+}
+
+.bitdrop-menu-hint {
+  text-align: center;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: clamp(11px, 1.55cqh, 14px);
+  font-weight: 600;
+  color: #c8c8ce;
+  line-height: 1.45;
+}
+
+.bitdrop-menu-platform {
+  font-size: 7px;
+  color: #6e6e72;
+  letter-spacing: 1px;
+}
+
+@container bitdrop-board (min-width: 400px) {
+  .bitdrop-menu-settings {
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.6cqh, 14px) 16px;
+  }
+}
+
+@container bitdrop-board (max-height: 560px) {
+  .bitdrop-menu-tagline,
+  .bitdrop-menu-hint {
+    display: none;
+  }
+
+  .bitdrop-menu-meta {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@container bitdrop-board (max-height: 420px) {
+  .bitdrop-menu-platform {
+    display: none;
+  }
+}
+
+@container bitdrop-board (max-height: 640px) {
+  .bitdrop-menu-overlay input[type='range'] {
+    height: 6px;
+  }
+
+  .bitdrop-menu-overlay input[type='range']::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    border-width: 3px;
+  }
+
+  .bitdrop-menu-overlay input[type='range']::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-width: 3px;
+  }
+}
+
+/* High scores: overlay does not page-scroll; only the list may. */
+.bitdrop-scores-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.97);
+  overflow: hidden;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+}
+
+.bitdrop-scores-panel {
+  max-width: 340px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(10px, 2dvh, 22px) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+}
+
+.bitdrop-scores-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Win / lose: fit the panel; no overlay scrollbar. */
+.bitdrop-end-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 2dvh, 20px);
+  overflow: hidden;
+}
+
+.bitdrop-end-panel {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.4cqh, 16px);
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bitdrop-learn-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.97);
+  overflow: hidden;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+}
+
+.bitdrop-learn-scroll {
+  max-width: 380px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(12px, 2dvh, 22px) 18px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  font-family: 'Press Start 2P', monospace;
+  color: #fff;
+  min-height: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 /* learn page gesture demos */
 @keyframes gestDrag {
   0%, 100% { left: 14px; top: 50px; opacity: 1; }

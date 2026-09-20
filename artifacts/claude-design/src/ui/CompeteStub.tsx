@@ -10,14 +10,17 @@ export function CompeteStub() {
   if (!canOpenCompeteLobby()) return null;
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 10,
-      padding: 12,
-      border: '2px dashed #6e6e72',
-      background: '#1a1a1c',
-    }}>
+    <div
+      className="bitdrop-compete-stub"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 8,
+        border: '2px dashed #6e6e72',
+        background: '#1a1a1c',
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 9, color: '#9a9aa0' }}>MODE</span>
         <span style={{ fontSize: 9, color: '#2ea043' }}>SOLO</span>

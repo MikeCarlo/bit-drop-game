@@ -36,6 +36,8 @@ export function HighScoreBoard({
       gap: compact ? 10 : 16,
       width: '100%',
       textAlign: 'left',
+      minHeight: 0,
+      flex: compact ? undefined : 1,
     }}>
       {!compact && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -56,7 +58,7 @@ export function HighScoreBoard({
           no scores yet
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className={compact ? undefined : 'bitdrop-scores-list'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {rows.map((row, i) => {
             const hi = highlightId != null && row.id === highlightId;
             return (
