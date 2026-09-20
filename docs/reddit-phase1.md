@@ -1,5 +1,7 @@
 # Bit Drop — Reddit Phase 1
 
+Website vs Reddit inventory, scoring rules, and gap list: [website-vs-reddit-parity.md](./website-vs-reddit-parity.md).
+
 Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay now also ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published). This phase does **not** implement realtime multiplayer.
 
 ## What already existed

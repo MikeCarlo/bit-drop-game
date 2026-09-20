@@ -11,6 +11,12 @@ import {
   type PointerTrack,
 } from './input';
 import { createLeaderboardStore, type ScoreRecord } from './leaderboard';
+import {
+  accumulateClear,
+  flushDrop,
+  idleDropScore,
+  type DropScoreAcc,
+} from './scoring';
 import { CompeteStub } from './ui/CompeteStub';
 import { HighScoreBoard } from './ui/HighScoreBoard';
 
@@ -96,7 +102,13 @@ export default class App extends React.Component<object, State> {
   phaseUntil = 0;
   fastDrop = false;
   chain = 1;
+  /** Live-site drop sequence accumulator. Score is not applied until flush. */
+  dropScore: DropScoreAcc = idleDropScore();
+  /** Mirrors state.score so a flush + immediate gameOver does not use a stale setState. */
+  liveScore = 0;
   runLenAt = new Map<string, number>();
+  /** Colored match-4+ runs found by the last checkClears (not flash adjacency). */
+  clearRunCount = 0;
   winPending = false;
   // tutorial internals
   tutCount = 0;       // actions performed toward the current step's `need`
@@ -106,11 +118,11 @@ export default class App extends React.Component<object, State> {
     { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
     { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
     {
-      title: 'MATCH 4', text: 'line up 4 of a color to clear it. each piece = 10 pts. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
+      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false }; return 0; },
     },
     {
-      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
+      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 3, t: true }; g[r - 1][1] = { c: 3, t: false }; return 1; },
     },
     {
@@ -118,7 +130,7 @@ export default class App extends React.Component<object, State> {
       setup: (g, _c, r) => { for (let x = 0; x < 4; x++) g[r - 1][x] = { c: 1, t: false }; return 0; },
     },
     {
-      title: 'CHAIN REACTIONS', text: 'when a clear drops pieces into another match, the next clear scores x2, x3... complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
+      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
         g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
@@ -312,7 +324,9 @@ export default class App extends React.Component<object, State> {
       if (this.runLen(x, y, 0, 1, c) + this.runLen(x, y, 0, -1, c) >= 2) continue;
       this.grid[y][x] = { c, t: true }; placed++;
     }
-    this.particles = []; this.flash = []; this.chain = 1; this.fastDrop = false; this.winPending = false; this.grounded = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
+    this.fastDrop = false; this.winPending = false; this.grounded = false;
+    this.liveScore = 0;
     this.setState({ screen: 'play', score: 0, left: placed, paused: false, newBest: false });
     this.spawn();
     this.lastFall = performance.now();
@@ -329,6 +343,7 @@ export default class App extends React.Component<object, State> {
     const cw = box.clientWidth, ch = box.clientHeight;
     this.rows = Math.max(12, Math.min(30, Math.floor(ch / (cw / this.cols))));
     this.particles = []; this.flash = []; this.dropFlashes = []; this.chain = 1;
+    this.dropScore = idleDropScore(); this.liveScore = 0;
     this.fastDrop = false; this.winPending = false; this.grounded = false; this.tutAdvance = false;
     this.setState({ screen: 'play', score: 0, paused: false, newBest: false, tutStep: 0 }, () => this.setupTutStep(0));
     this.beep(523, 0.06);
@@ -346,7 +361,8 @@ export default class App extends React.Component<object, State> {
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const targets = step.setup ? step.setup(this.grid, this.cols, this.rows) : 0;
     this.tutCount = 0; this.tutAdvance = false;
-    this.particles = []; this.flash = []; this.chain = 1; this.winPending = false; this.grounded = false;
+    this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
+    this.winPending = false; this.grounded = false;
     this.setState({ tutStep: i, left: targets });
     const [a, b] = step.pill || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
     this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
@@ -407,7 +423,21 @@ export default class App extends React.Component<object, State> {
     return Math.random() < 0.15 ? this.RAINBOW : (Math.random() * 4) | 0;
   }
 
+  /** Apply a finished drop sequence to liveScore / HUD. Returns the awarded pts. */
+  applyFlush(): number {
+    const result = flushDrop(this.dropScore);
+    this.dropScore = result.next;
+    if (result.pts > 0) {
+      this.liveScore += result.pts;
+      this.setState({ score: this.liveScore });
+    }
+    return result.pts;
+  }
+
   spawn() {
+    // Live website: flush the previous drop before the next pill (or tut retry).
+    this.applyFlush();
+    this.dropScore = { ...this.dropScore, chainHadTarget: false };
     if (this.isTut()) {
       const i = this.state.tutStep;
       if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
@@ -501,7 +531,7 @@ export default class App extends React.Component<object, State> {
     const bothOn = a.y >= 0 && b.y >= 0;
     if (a.y >= 0) this.grid[a.y][a.x] = { c: a.c, t: false, ...(bothOn ? { dx: b.x - a.x, dy: b.y - a.y } : {}) };
     if (b.y >= 0) this.grid[b.y][b.x] = { c: b.c, t: false, ...(bothOn ? { dx: a.x - b.x, dy: a.y - b.y } : {}) };
-    this.pill = null; this.chain = 1;
+    this.pill = null; this.chain = 1; this.dropScore = idleDropScore();
     this.beep(150, 0.07, 'triangle', 0.18);
     if (!this.checkClears()) this.spawn();
   }
@@ -512,13 +542,17 @@ export default class App extends React.Component<object, State> {
     // A run of only rainbows has no color anchor and does NOT clear.
     const marks = new Map<string, number>();
     const R = this.RAINBOW;
+    let runCount = 0;
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
       let run: [number, number][] = [], runColor = -1;
       const flush = () => {
-        if (run.length >= 4 && runColor !== -1) run.forEach(p => {
-          const k = p[0] + ',' + p[1];
-          marks.set(k, Math.max(marks.get(k) || 0, run.length));
-        });
+        if (run.length >= 4 && runColor !== -1) {
+          runCount++;
+          run.forEach(p => {
+            const k = p[0] + ',' + p[1];
+            marks.set(k, Math.max(marks.get(k) || 0, run.length));
+          });
+        }
       };
       let x = sx, y = sy;
       while (x < this.cols && y < this.rows) {
@@ -540,6 +574,7 @@ export default class App extends React.Component<object, State> {
     for (let x = 0; x < this.cols; x++) scan(x, 0, 0, 1);
     if (!marks.size) return false;
     this.runLenAt = marks;
+    this.clearRunCount = runCount;
     this.flash = [...marks.keys()].map(s => s.split(',').map(Number) as [number, number]);
     this.phase = 'flash'; this.phaseUntil = performance.now() + 260;
     return true;
@@ -549,13 +584,18 @@ export default class App extends React.Component<object, State> {
   lenBonus(len: number) { return Math.min(len - 3, 5); }
 
   doClear() {
-    let pts = 0, targets = 0, maxRun = 0, hadRainbow = false;
+    // Live website: accumulate only. HUD score updates on spawn / gameOver flush.
+    // Use the colored 4+ scans from checkClears, not flash-neighbor pairs.
+    const runCount = this.clearRunCount;
+    this.clearRunCount = 0;
+    const scored: { t: boolean; runLen: number }[] = [];
+    let targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
       const cell = this.grid[y][x];
       if (!cell) continue;
       const runLen = this.runLenAt.get(x + ',' + y) || 4;
       maxRun = Math.max(maxRun, runLen);
-      pts += (cell.t ? 50 : 10) * this.chain * this.lenBonus(runLen);
+      scored.push({ t: cell.t, runLen });
       if (cell.t) targets++;
       if (cell.c === this.RAINBOW) hadRainbow = true;
       this.burst(x, y, cell.c);
@@ -567,8 +607,9 @@ export default class App extends React.Component<object, State> {
       this.grid[y][x] = null;
     }
     this.flash = [];
+    this.dropScore = accumulateClear(this.dropScore, scored, runCount);
     const left = this.state.left - targets;
-    this.setState({ score: this.state.score + pts, left });
+    this.setState({ left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
     this.tutClear(targets, maxRun, this.chain, hadRainbow);
     this.chain++;
@@ -621,11 +662,13 @@ export default class App extends React.Component<object, State> {
   }
 
   gameOver(won: boolean) {
+    this.applyFlush();
+    this.dropScore = { ...this.dropScore, chainHadTarget: false };
     this.phase = 'idle'; this.pill = null;
-    const score = this.state.score;
+    const score = this.liveScore;
     let best = this.state.best, nb = false;
     if (score > best) { best = score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
-    this.setState({ screen: won ? 'win' : 'lose', best, newBest: nb, lastRank: null, lastScoreId: null });
+    this.setState({ screen: won ? 'win' : 'lose', score, best, newBest: nb, lastRank: null, lastScoreId: null });
     if (won) this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
     else this.arp([392, 330, 262, 196], 130, 0.16);
     if (FLAGS.enableLeaderboard) void this.recordScore(won, score);

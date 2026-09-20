@@ -83,8 +83,8 @@ const match4Frames: Frame[] = (() => {
     { grid: g1, ms: 450 },
     { grid: g2, ms: 450 },
     { grid: g3, ms: 500 },
-    { grid: g3, flash: [[1, 3], [2, 3], [3, 3], [4, 3]], label: '+40', ms: 700 },
-    { grid: g4, label: '+40', ms: 900 },
+    { grid: g3, flash: [[1, 3], [2, 3], [3, 3], [4, 3]], label: 'CLEAR · 0 pts', ms: 700 },
+    { grid: g4, label: 'no target in this drop', ms: 900 },
   ];
 })();
 
@@ -218,13 +218,16 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
         </Section>
 
         <Section title="MATCH 4" demo={<DemoBoard frames={match4Frames} cols={6} rows={4} />}>
-          each cleared piece = <span style={{ color: '#fff' }}>10 pts</span>.<br />
-          4 in a row = 40 pts.
+          each cleared piece is worth <span style={{ color: '#fff' }}>10 pts</span> of base
+          (targets 50) — but a drop only <span style={{ color: '#fff' }}>adds those points</span> if
+          a target was in that clear sequence. 4 regulars with no target still clear, and score 0.
         </Section>
 
         <Section title="TARGET SQUARES" demo={<DemoBoard frames={targetFrames} cols={6} rows={3} />}>
           target squares (marked with a dot) are worth <span style={{ color: '#fff' }}>50 pts</span> each.<br />
-          clear every target to win the level!
+          clear every target to win the level!<br />
+          if any target is removed in a drop&apos;s cascade, every piece from every clear in that
+          drop counts.
         </Section>
 
         <Section title="BIG LINES = BIG BONUS" demo={<DemoBoard frames={longLineFrames} cols={8} rows={2} />}>
@@ -234,14 +237,15 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
         </Section>
 
         <Section title="CHAIN REACTIONS" demo={<DemoBoard frames={chainFrames} cols={6} rows={5} />}>
-          when a clear makes pieces fall into another match, the next clear scores <span style={{ color: '#2ea043' }}>x2</span>, then x3, x4...<br />
-          the chain resets when your next pill lands — it only builds from cascades off one drop.<br />
-          chains stack WITH line bonuses — plan your drops!
+          all match-4+ lines in one drop (the first clear plus any cascades) are counted, then the
+          drop&apos;s base is multiplied by that line count — 2 lines = <span style={{ color: '#2ea043' }}>x2</span>, 3 = x3...<br />
+          the sequence resets when your next pill lands.<br />
+          line-count stacks WITH length bonuses — plan your drops!
         </Section>
 
         <div style={{ borderTop: '2px solid #3a3a3e', paddingTop: 22, fontFamily: BODY, fontWeight: 600, fontSize: 14, color: '#b4b4ba', lineHeight: 1.9, textAlign: 'center' }}>
-          example: 6-in-a-row with 2 targets on a x2 chain<br />
-          = (50+50+10+10+10+10) x3 x2 = <span style={{ color: '#d9cf4a' }}>840 pts!</span>
+          example: 6-in-a-row with 2 targets, 2 lines in the drop<br />
+          = (50+50+10+10+10+10) x3 x2 = <span style={{ color: '#d9cf4a' }}>840 pts</span> — only because a target was in the sequence
         </div>
 
         <button onClick={onBack} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#fff', border: '4px solid #fff', padding: 14, cursor: 'pointer' }}>
