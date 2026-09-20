@@ -201,15 +201,15 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
             <GesturePanel caption="DRAG ◀▶ — slide left or right to move the pill">
               <Finger anim="gestDrag" />
             </GesturePanel>
+            <GesturePanel caption="TAP — tap anywhere to rotate. each tap = one rotate">
+              <Finger anim="gestSingle" />
+            </GesturePanel>
             <GesturePanel caption="HOLD + TAP — hold with one finger, tap with a second. each tap = one rotate">
               <Finger anim="gestHold" />
               <Finger anim="gestTap" second />
             </GesturePanel>
             <GesturePanel caption="SWIPE ▼ — flick down fast to hard drop the pill instantly">
               <Finger anim="gestSwipe" />
-            </GesturePanel>
-            <GesturePanel caption="DOUBLE-TAP — quick tap-tap also rotates the pill">
-              <Finger anim="gestDouble" />
             </GesturePanel>
           </div>
         }>
