@@ -91,3 +91,8 @@ export function shouldDebounceRotate(
 export function shouldCapturePlayGestures(screen: string): boolean {
   return screen === 'play';
 }
+
+/** Keyboard slam — same as a swipe-down hard drop. Repeat is ignored so hold does not auto-slam the next pill. */
+export function isHardDropKey(key: string): boolean {
+  return key === 'ArrowDown' || key === 'Down';
+}

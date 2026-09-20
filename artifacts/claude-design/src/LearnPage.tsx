@@ -214,7 +214,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
           </div>
         }>
           move, rotate and drop with simple gestures — anywhere on the board.<br />
-          keyboard also works: ◀▶ move · ▲/space rotate · ▼ fast drop · P pause.
+          keyboard also works: ◀▶ move · ▲/space rotate · ▼ hard drop · P pause.
         </Section>
 
         <Section title="MATCH 4" demo={<DemoBoard frames={match4Frames} cols={6} rows={4} />}>

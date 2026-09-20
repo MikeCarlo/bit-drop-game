@@ -4,6 +4,7 @@ import { FLAGS, playModeLabel } from './flags';
 import {
   beginPointerTrack,
   idlePointerTrack,
+  isHardDropKey,
   isTapRelease,
   shouldCapturePlayGestures,
   shouldDebounceRotate,
@@ -205,7 +206,7 @@ export default class App extends React.Component<object, State> {
     this.onKey = this.handleKey.bind(this);
     window.addEventListener('keydown', this.onKey);
 
-    this.onKeyUp = (e: KeyboardEvent) => { if (e.key === 'ArrowDown') this.fastDrop = false; };
+    this.onKeyUp = (e: KeyboardEvent) => { if (isHardDropKey(e.key)) this.fastDrop = false; };
     window.addEventListener('keyup', this.onKeyUp);
 
     this.pointerHandlers = {
@@ -928,10 +929,13 @@ export default class App extends React.Component<object, State> {
   // ── input ──────────────────────────────────────────────────────────────
   handleKey(e: KeyboardEvent) {
     if (this.state.screen !== 'play') return;
-    if (e.key === 'ArrowLeft') this.move(-1);
-    else if (e.key === 'ArrowRight') this.move(1);
+    if (e.key === 'ArrowLeft') { e.preventDefault(); this.move(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); this.move(1); }
     else if (e.key === 'ArrowUp' || e.key === ' ') { e.preventDefault(); this.rotate(); }
-    else if (e.key === 'ArrowDown') this.fastDrop = true;
+    else if (isHardDropKey(e.key)) {
+      e.preventDefault();
+      if (!e.repeat) this.hardDrop();
+    }
     else if (e.key === 'p') this.setState({ paused: !this.state.paused });
   }
 
