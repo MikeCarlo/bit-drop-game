@@ -1,6 +1,6 @@
 # BIT·DROP
 
-BIT·DROP is a short puzzle game for Reddit. You drop two-color pills, line up **four of the same color**, and wipe every **target square**. It is a casual solo high-score game — not a chat app and not a moderation tool.
+BIT·DROP is a short puzzle game for Reddit. You drop two-color blocks, line up **four of the same color**, and wipe every **target square**. It is a casual solo high-score game — not a chat app and not a moderation tool.
 
 **Who it is for:** anyone who wants a quick puzzle in the feed. The home community is [r/BitDropGame](https://www.reddit.com/r/BitDropGame).
 
