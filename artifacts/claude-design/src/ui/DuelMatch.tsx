@@ -1,8 +1,7 @@
-import React from 'react';
-import { duelApi, DuelRequestError } from '../duel/api';
-import { botSkillLabel, isBotCreditId } from '../duel/pcMatch';
-import type { MatchView, WinsBoard } from '../duel/types';
-import { DuelWinsBoard } from './DuelWinsBoard';
+import type { CSSProperties } from 'react';
+import { botSkillLabel } from '../duel/pcMatch';
+import type { MatchView } from '../duel/types';
+import { DuelResult } from './DuelResult';
 
 const BODY = 'ui-monospace,Menlo,Consolas,monospace';
 
@@ -15,6 +14,8 @@ export function DuelMatch({
   onReady,
   onForfeit,
   onMenu,
+  onPlayAgain,
+  onFind,
   onRetry,
 }: {
   match: MatchView;
@@ -26,51 +27,30 @@ export function DuelMatch({
   onReady: () => void;
   onForfeit: () => void;
   onMenu: () => void;
+  onPlayAgain: () => void;
+  onFind: () => void;
   onRetry?: () => void;
 }) {
-  const [wins, setWins] = React.useState<WinsBoard | null>(null);
-  const [localError, setLocalError] = React.useState<string | null>(null);
-  const youWonRound = match.roundWinner != null && match.roundWinner.toLowerCase() === match.you.toLowerCase();
-  const youWonMatch = match.winner != null && match.winner.toLowerCase() === match.you.toLowerCase();
+  if (match.phase === 'complete') {
+    return (
+      <DuelResult
+        match={match}
+        vsPc={vsPc}
+        botSkill={botSkill}
+        onPlayAgain={onPlayAgain}
+        onFind={onFind}
+        onMenu={onMenu}
+      />
+    );
+  }
 
-  React.useEffect(() => {
-    if (match.phase !== 'complete') return;
-    let stop = false;
-    const load = async () => {
-      if (vsPc) {
-        if (youWonMatch && isBotCreditId(match.id)) {
-          try {
-            const board = await duelApi.recordBotWin(match.id);
-            if (!stop) setWins(board);
-            return;
-          } catch (err) {
-            if (!stop) {
-              setLocalError(err instanceof DuelRequestError ? err.message : 'Could not save the bot win');
-            }
-          }
-        }
-        const board = await duelApi.botWins();
-        if (!stop) setWins(board);
-        return;
-      }
-      const board = await duelApi.wins();
-      if (!stop) setWins(board);
-    };
-    void load().catch(() => {
-      if (!stop) setWins(null);
-    });
-    return () => {
-      stop = true;
-    };
-  }, [vsPc, match.phase, match.id, match.winner, youWonMatch]);
+  const youWonRound = match.roundWinner != null && match.roundWinner.toLowerCase() === match.you.toLowerCase();
 
   const title =
-    match.phase === 'complete'
-      ? youWonMatch ? 'YOU WON THE MATCH' : 'MATCH LOST'
-      : error && match.phase === 'playing'
-        ? 'RESULT NOT SAVED'
-        : youWonRound ? 'ROUND WON' : match.roundWinner ? 'ROUND LOST' : 'SENDING RESULT…';
-  const titleColor = title.startsWith('YOU WON') || title === 'ROUND WON' ? '#2ea043' : title === 'SENDING RESULT…' ? '#d9cf4a' : '#c23a3a';
+    error && match.phase === 'playing'
+      ? 'RESULT NOT SAVED'
+      : youWonRound ? 'ROUND WON' : match.roundWinner ? 'ROUND LOST' : 'SENDING RESULT…';
+  const titleColor = title === 'ROUND WON' ? '#2ea043' : title === 'SENDING RESULT…' ? '#d9cf4a' : '#c23a3a';
 
   return (
     <div className="bitdrop-duel-overlay" data-testid="bitdrop-duel-match">
@@ -88,8 +68,8 @@ export function DuelMatch({
           {match.phase === 'between' && match.youReady && !match.opponentReady && ' · waiting for your opponent'}
           {match.phase === 'playing' && !error && ' · next round is starting'}
         </div>
-        {(error || localError) && (
-          <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{error || localError}</div>
+        {error && (
+          <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{error}</div>
         )}
         {match.phase === 'between' && !match.youReady && (
           <button type="button" disabled={busy} onClick={onReady} style={goBtn}>NEXT ROUND</button>
@@ -97,42 +77,18 @@ export function DuelMatch({
         {onRetry && error && match.phase === 'playing' && (
           <button type="button" disabled={busy} onClick={onRetry} style={goBtn}>RETRY RESULT</button>
         )}
-        {match.phase === 'complete' && !vsPc && wins && (
-          <DuelWinsBoard month={wins.month} rows={wins.rows} you={match.you} compact />
-        )}
-        {match.phase === 'complete' && vsPc && (
-          <div style={{ fontFamily: BODY, fontSize: 12, color: '#9a9aa0', lineHeight: 1.45 }}>
-            {youWonMatch
-              ? 'This win is on the bot board only.'
-              : 'A loss to the PC is not added to either board.'}
-          </div>
-        )}
-        {match.phase === 'complete' && vsPc && wins && (
-          <DuelWinsBoard
-            month={wins.month}
-            rows={wins.rows}
-            you={match.you}
-            compact
-            title="BOT BOARD"
-            hint="wins vs the PC"
-            empty="no bot wins this month"
-          />
-        )}
-        {match.phase !== 'complete' && !vsPc && (
+        {!vsPc && (
           <button type="button" disabled={busy} onClick={onForfeit} style={ghostBtn}>FORFEIT</button>
         )}
-        {match.phase !== 'complete' && vsPc && (
+        {vsPc && (
           <button type="button" onClick={onMenu} style={ghostBtn}>QUIT</button>
-        )}
-        {match.phase === 'complete' && (
-          <button type="button" onClick={onMenu} style={ghostBtn}>MENU</button>
         )}
       </div>
     </div>
   );
 }
 
-const goBtn: React.CSSProperties = {
+const goBtn: CSSProperties = {
   fontFamily: 'inherit',
   fontSize: 12,
   background: '#2ea043',
@@ -142,7 +98,7 @@ const goBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const ghostBtn: React.CSSProperties = {
+const ghostBtn: CSSProperties = {
   fontFamily: 'inherit',
   fontSize: 12,
   background: '#3a3a3e',

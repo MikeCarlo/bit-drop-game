@@ -827,6 +827,7 @@ export default class App extends React.Component<object, State> {
   startPcDuel() {
     if (!redditDuelEnabled()) return;
     this.stopDuelSync();
+    this.stopPcBot();
     this.pcMode = true;
     this.pcWins = [0, 0];
     this.pcRoundClosed = false;
@@ -1196,7 +1197,7 @@ export default class App extends React.Component<object, State> {
     }
   }
 
-  leaveDuel() {
+  leaveDuel(screen: 'menu' | 'duel' = 'menu') {
     this.stopDuelSync();
     this.stopPcBot();
     this.pcMode = false;
@@ -1212,7 +1213,7 @@ export default class App extends React.Component<object, State> {
     const solo = this.savedSolo;
     this.savedSolo = null;
     this.setState({
-      screen: 'menu',
+      screen,
       duelMatch: null,
       duelError: null,
       paused: false,
@@ -1223,6 +1224,15 @@ export default class App extends React.Component<object, State> {
       viruses: solo?.viruses ?? this.state.viruses,
       speed: solo?.speed ?? this.state.speed,
     });
+  }
+
+  /** Another match of the same kind. A bot rolls a new skill. A human returns to the queue. */
+  playDuelAgain() {
+    if (this.pcMode || isPcMatch(this.state.duelMatch)) {
+      this.startPcDuel();
+      return;
+    }
+    this.leaveDuel('duel');
   }
 
   // ── loop ──────────────────────────────────────────────────────────────
@@ -1768,6 +1778,8 @@ export default class App extends React.Component<object, State> {
                 onReady={() => { void this.readyDuel(); }}
                 onForfeit={() => { void this.forfeitDuel(); }}
                 onMenu={() => this.leaveDuel()}
+                onPlayAgain={() => this.playDuelAgain()}
+                onFind={() => this.leaveDuel('duel')}
                 onRetry={this.pendingOutcome ? () => this.retryDuelReport() : undefined}
               />
             ) : (

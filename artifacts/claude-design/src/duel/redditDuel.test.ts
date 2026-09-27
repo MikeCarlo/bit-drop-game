@@ -9,8 +9,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 test('reddit duel UI does not invite by SMS', () => {
   const lobby = readFileSync(join(here, '../ui/DuelLobby.tsx'), 'utf8');
   const match = readFileSync(join(here, '../ui/DuelMatch.tsx'), 'utf8');
+  const result = readFileSync(join(here, '../ui/DuelResult.tsx'), 'utf8');
+  const outcome = readFileSync(join(here, '../duel/result.ts'), 'utf8');
   const app = readFileSync(join(here, '../App.tsx'), 'utf8');
-  for (const src of [lobby, match, app]) {
+  for (const src of [lobby, match, result, app]) {
     assert.doesNotMatch(src, /\bsms\b/i);
     assert.doesNotMatch(src, /twilio/i);
     assert.doesNotMatch(src, /tel:/i);
@@ -23,7 +25,17 @@ test('reddit duel UI does not invite by SMS', () => {
   assert.match(app, /FIND A CHALLENGER/);
   assert.match(lobby, /BOT BOARD/);
   assert.match(lobby, /MONTHLY DUEL WINS/);
-  assert.match(match, /bot board only/);
+  assert.match(result, /bot board only/);
+  assert.match(outcome, /YOU WIN/);
+  assert.match(outcome, /YOU LOSE/);
+  assert.match(result, /outcomeTitle/);
+  assert.match(result, /PLAY AGAIN/);
+  assert.match(result, /FIND A CHALLENGER/);
+  assert.match(result, /data-testid="duel-result"/);
+  assert.match(result, /data-testid="duel-set-score"/);
+  assert.match(match, /phase === 'complete'/);
+  assert.match(match, /ROUND WON/);
+  assert.doesNotMatch(match, /YOU WIN/);
   assert.match(app, /recordBotWin|botWins/);
   assert.match(app, /rollBotSkill\(\)/);
   assert.match(app, /data-testid="bot-skill"/);
