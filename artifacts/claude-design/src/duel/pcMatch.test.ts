@@ -5,10 +5,17 @@ import {
   PC_WAIT_MS,
   PC_WINS_TO_TAKE,
   buildPcView,
+  formatWait,
   isPcMatch,
   pcWaitNudge,
   settlePcRound,
 } from './pcMatch.ts';
+
+test('lobby timer prints elapsed minutes and seconds', () => {
+  assert.equal(formatWait(0), '0:00');
+  assert.equal(formatWait(12_400), '0:12');
+  assert.equal(formatWait(75_000), '1:15');
+});
 
 test('waiting-room nudge starts at 45s', () => {
   assert.equal(PC_WAIT_MS, 45_000);

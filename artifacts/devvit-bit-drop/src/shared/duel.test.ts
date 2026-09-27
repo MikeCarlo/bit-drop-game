@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import {
   assembleMatchView,
   clampDuelSettings,
+  duelQueueKey,
+  duelSeatKey,
+  earlierHost,
   duelWinsKey,
   filterAttackColors,
   matchPhase,
@@ -14,6 +17,7 @@ import {
   tallyRounds,
   utcMonth,
   WINS_TO_TAKE_MATCH,
+  type QueueSeat,
   type StoredMatch,
 } from './duel.ts';
 
@@ -45,6 +49,24 @@ test('username normalize strips u/ and rejects junk', () => {
   assert.equal(normalizeRedditUsername('no'), null);
   assert.equal(normalizeRedditUsername('has space'), null);
   assert.equal(sameUser('Alpha', 'alpha'), true);
+});
+
+test('the earlier queue seat is the host', () => {
+  const first: QueueSeat = {
+    username: 'Alpha',
+    width: 12,
+    viruses: 8,
+    speed: 4,
+    postId: 't3_a',
+    joinedAt: 10,
+  };
+  const second: QueueSeat = { ...first, username: 'Beta', width: 20, joinedAt: 20, postId: 't3_b' };
+  const paired = earlierHost(first, second);
+  assert.equal(paired.host.username, 'Alpha');
+  assert.equal(paired.host.width, 12);
+  assert.equal(paired.guest.username, 'Beta');
+  assert.equal(duelQueueKey(), 'bitdrop:duel:queue');
+  assert.equal(duelSeatKey('Alpha'), 'bitdrop:duel:seat:alpha');
 });
 
 test('settings clamp to the solo slider ranges', () => {

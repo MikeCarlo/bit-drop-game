@@ -11,6 +11,8 @@ import {
   duelState,
   forfeit,
   getMatch,
+  joinQueue,
+  leaveQueue,
   listWins,
   readyNext,
   reportRound,
@@ -40,6 +42,25 @@ duel.get('/wins', async (c) => {
     const raw = c.req.query('limit');
     const parsed = raw ? Number(raw) : 10;
     return c.json(await listWins(Number.isFinite(parsed) ? parsed : 10));
+  } catch (error) {
+    const f = fail(error);
+    return c.json<ErrorResponse>(f.body, f.status);
+  }
+});
+
+duel.post('/queue', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(await joinQueue(body as Record<string, unknown>));
+  } catch (error) {
+    const f = fail(error);
+    return c.json<ErrorResponse>(f.body, f.status);
+  }
+});
+
+duel.post('/queue/leave', async (c) => {
+  try {
+    return c.json(await leaveQueue());
   } catch (error) {
     const f = fail(error);
     return c.json<ErrorResponse>(f.body, f.status);

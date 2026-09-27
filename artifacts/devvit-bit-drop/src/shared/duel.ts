@@ -107,6 +107,41 @@ export function duelPostIndexKey(postId: string): string {
   return `bitdrop:duel:post:${postId}`;
 }
 
+/** Sorted set of user keys waiting for a human. Score is `joinedAt` (ms). */
+export function duelQueueKey(): string {
+  return 'bitdrop:duel:queue';
+}
+
+export function duelSeatKey(username: string): string {
+  return `bitdrop:duel:seat:${userKey(username)}`;
+}
+
+/** Hash field = user key, value = `{token}:{claimedAt}`. Pairing lock. */
+export function duelPairLockKey(): string {
+  return 'bitdrop:duel:pairlock';
+}
+
+/** Drop a seat if the client stops polling. The lobby refreshes this while open. */
+export const QUEUE_SEAT_TTL_SECONDS = 180;
+export const QUEUE_STALE_MS = QUEUE_SEAT_TTL_SECONDS * 1000;
+
+export type QueueSeat = {
+  username: string;
+  width: number;
+  viruses: number;
+  speed: number;
+  postId: string;
+  joinedAt: number;
+};
+
+/** First player into the queue is the host. Their board settings are the match. */
+export function earlierHost(a: QueueSeat, b: QueueSeat): { host: QueueSeat; guest: QueueSeat } {
+  if (a.joinedAt !== b.joinedAt) {
+    return a.joinedAt < b.joinedAt ? { host: a, guest: b } : { host: b, guest: a };
+  }
+  return userKey(a.username) <= userKey(b.username) ? { host: a, guest: b } : { host: b, guest: a };
+}
+
 export type DuelPhase = 'playing' | 'between' | 'complete';
 
 export type StoredMatch = {

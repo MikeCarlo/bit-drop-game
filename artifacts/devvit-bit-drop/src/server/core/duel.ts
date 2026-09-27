@@ -2,6 +2,7 @@ import { context, realtime, redis, reddit } from '@devvit/web/server';
 import {
   assembleMatchView,
   clampDuelSettings,
+  earlierHost,
   DUEL_REALTIME_KIND,
   DUEL_TTL_SECONDS,
   DUEL_WINS_TTL_SECONDS,
@@ -12,7 +13,10 @@ import {
   duelInboxKey,
   duelMatchKey,
   duelOutboxKey,
+  duelPairLockKey,
   duelPostIndexKey,
+  duelQueueKey,
+  duelSeatKey,
   duelReadyKey,
   duelRoundsKey,
   duelWinsKey,
@@ -21,13 +25,17 @@ import {
   MAX_DUEL_ROUNDS,
   normalizeRedditUsername,
   postDeepLink,
+  QUEUE_SEAT_TTL_SECONDS,
+  QUEUE_STALE_MS,
   rankWins,
   roundWinnerName,
   sameUser,
   tallyRounds,
   utcMonth,
+  userKey,
   type AttackRow,
   type MatchView,
+  type QueueSeat,
   type StoredChallenge,
   type StoredMatch,
 } from '../../shared/duel';
@@ -43,12 +51,23 @@ export class DuelError extends Error {
 
 export type ChallengeView = StoredChallenge & { incoming: boolean };
 
+export type QueueStatus = {
+  joinedAt: number;
+  waitedMs: number;
+};
+
 export type DuelStateResponse = {
   username: string;
   postId: string;
   inbox: ChallengeView[];
   outbox: ChallengeView[];
   active: MatchView | null;
+  queue: QueueStatus | null;
+};
+
+export type QueueJoinResponse = {
+  queue: QueueStatus | null;
+  match: MatchView | null;
 };
 
 export type WinsResponse = {
@@ -288,22 +307,229 @@ async function resolveOpponent(raw: string, me: string): Promise<string> {
   return user.username;
 }
 
+function parseSeat(raw: string | undefined): QueueSeat | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as QueueSeat;
+    if (!parsed?.username || !Number.isFinite(parsed.joinedAt)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function readSeat(username: string): Promise<QueueSeat | null> {
+  return parseSeat(await redis.get(duelSeatKey(username)));
+}
+
+async function writeSeat(seat: QueueSeat): Promise<void> {
+  const key = duelSeatKey(seat.username);
+  await redis.set(key, JSON.stringify(seat));
+  await redis.expire(key, QUEUE_SEAT_TTL_SECONDS);
+}
+
+async function dropSeat(username: string): Promise<void> {
+  await redis.zRem(duelQueueKey(), [userKey(username)]);
+  await redis.del(duelSeatKey(username));
+}
+
+function asZMembers(raw: unknown): { member: string; score: number }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { member: string; score: number }[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object' || !('member' in row)) continue;
+    const member = String((row as { member: unknown }).member ?? '');
+    const score = Number((row as { score: unknown }).score);
+    if (!member) continue;
+    out.push({ member, score: Number.isFinite(score) ? score : 0 });
+  }
+  return out;
+}
+
+async function claimSeat(user: string, token: string): Promise<boolean> {
+  const field = userKey(user);
+  const value = `${token}:${Date.now()}`;
+  if (await claimField(duelPairLockKey(), field, value)) return true;
+  const existing = await redis.hGet(duelPairLockKey(), field);
+  const ts = Number(String(existing ?? '').split(':').pop());
+  if (!Number.isFinite(ts) || Date.now() - ts < 15_000) return false;
+  await redis.hDel(duelPairLockKey(), [field]);
+  return claimField(duelPairLockKey(), field, `${token}:${Date.now()}`);
+}
+
+async function releaseClaims(token: string, users: string[]): Promise<void> {
+  for (const user of users) {
+    const field = userKey(user);
+    const cur = await redis.hGet(duelPairLockKey(), field);
+    if (typeof cur === 'string' && cur.startsWith(`${token}:`)) {
+      await redis.hDel(duelPairLockKey(), [field]);
+    }
+  }
+}
+
+async function publishPosts(postIds: string[], matchId: string): Promise<void> {
+  const seen = new Set<string>();
+  for (const postId of postIds) {
+    if (!postId || seen.has(postId)) continue;
+    seen.add(postId);
+    try {
+      await realtime.send(postId, { kind: DUEL_REALTIME_KIND, matchId });
+    } catch (error) {
+      console.error('duel realtime unavailable', error);
+    }
+  }
+}
+
+function queueStatus(seat: QueueSeat, now = Date.now()): QueueStatus {
+  return { joinedAt: seat.joinedAt, waitedMs: Math.max(0, now - seat.joinedAt) };
+}
+
+/** Pair `you` with the oldest other open seat. Host is whoever queued first. */
+async function tryPair(you: string): Promise<StoredMatch | null> {
+  const existing = await activeMatch(you);
+  if (existing) {
+    await dropSeat(you);
+    return existing;
+  }
+  const mine = await readSeat(you);
+  if (!mine) return null;
+
+  const waiting = asZMembers(await redis.zRange(duelQueueKey(), 0, 24, { by: 'rank' }));
+  const now = Date.now();
+  for (const row of waiting) {
+    if (row.member === userKey(you)) continue;
+    if (now - row.score > QUEUE_STALE_MS) {
+      await redis.zRem(duelQueueKey(), [row.member]);
+      await redis.del(duelSeatKey(row.member));
+      continue;
+    }
+    const other = await readSeat(row.member);
+    if (!other) {
+      await redis.zRem(duelQueueKey(), [row.member]);
+      continue;
+    }
+    if (await activeMatch(other.username)) {
+      await dropSeat(other.username);
+      continue;
+    }
+    const token = crypto.randomUUID();
+    const ordered = [userKey(you), userKey(other.username)].sort();
+    const gotFirst = await claimSeat(ordered[0]!, token);
+    if (!gotFirst) continue;
+    const gotSecond = await claimSeat(ordered[1]!, token);
+    if (!gotSecond) {
+      await releaseClaims(token, [ordered[0]!]);
+      continue;
+    }
+    const freshYou = await readSeat(you);
+    const freshOther = await readSeat(other.username);
+    if (!freshYou || !freshOther || (await activeMatch(you)) || (await activeMatch(other.username))) {
+      await releaseClaims(token, [you, other.username]);
+      continue;
+    }
+    const { host, guest } = earlierHost(freshYou, freshOther);
+    const match: StoredMatch = {
+      id: crypto.randomUUID(),
+      p1: host.username,
+      p2: guest.username,
+      width: host.width,
+      viruses: host.viruses,
+      speed: host.speed,
+      status: 'active',
+      winner: null,
+      forfeitWinner: null,
+      postId: host.postId,
+      challengeId: 'queue',
+      createdAt: Date.now(),
+    };
+    await writeMatch(match);
+    if (guest.postId && guest.postId !== host.postId) {
+      await redis.hSet(duelPostIndexKey(guest.postId), { [match.id]: 'match' });
+      await touch(duelPostIndexKey(guest.postId));
+    }
+    await dropSeat(host.username);
+    await dropSeat(guest.username);
+    await setActive(host.username, match.id);
+    await setActive(guest.username, match.id);
+    await releaseClaims(token, [host.username, guest.username]);
+    await publishPosts([host.postId, guest.postId], match.id);
+    return match;
+  }
+  return null;
+}
+
+async function loadActiveView(you: string): Promise<MatchView | null> {
+  const activeId = await redis.get(duelActiveKey(you));
+  if (!activeId) return null;
+  const match = await readMatch(activeId);
+  if (!match || match.status === 'complete') {
+    await redis.del(duelActiveKey(you));
+    return null;
+  }
+  return viewFor(match, you);
+}
+
 export async function duelState(): Promise<DuelStateResponse> {
   const you = await identity();
   const postId = context.postId ?? '';
   const inbox = (await listPending(duelInboxKey(you))).map((ch) => toChallengeView(ch, you));
   const outbox = (await listPending(duelOutboxKey(you))).map((ch) => toChallengeView(ch, you));
-  const activeId = await redis.get(duelActiveKey(you));
-  let active: MatchView | null = null;
-  if (activeId) {
-    const match = await readMatch(activeId);
-    if (!match || match.status === 'complete') {
-      await redis.del(duelActiveKey(you));
-    } else {
-      active = await viewFor(match, you);
+  let active = await loadActiveView(you);
+  let queue: QueueStatus | null = null;
+  if (!active) {
+    const paired = await tryPair(you);
+    if (paired) active = await viewFor(paired, you);
+  }
+  if (!active) {
+    const seat = await readSeat(you);
+    if (seat) {
+      await redis.expire(duelSeatKey(you), QUEUE_SEAT_TTL_SECONDS);
+      queue = queueStatus(seat);
     }
   }
-  return { username: you, postId, inbox, outbox, active };
+  return { username: you, postId, inbox, outbox, active, queue };
+}
+
+export async function joinQueue(body: {
+  width?: unknown;
+  viruses?: unknown;
+  speed?: unknown;
+}): Promise<QueueJoinResponse> {
+  const you = await identity();
+  const postId = postIdOrThrow();
+  const already = await activeMatch(you);
+  if (already) {
+    await dropSeat(you);
+    return { queue: null, match: await viewFor(already, you) };
+  }
+  const settings = clampDuelSettings({
+    width: Number(body.width),
+    viruses: Number(body.viruses),
+    speed: Number(body.speed),
+  });
+  const previous = await readSeat(you);
+  const seat: QueueSeat = previous ?? {
+    username: you,
+    ...settings,
+    postId,
+    joinedAt: Date.now(),
+  };
+  await writeSeat(seat);
+  await redis.zAdd(duelQueueKey(), { member: userKey(you), score: seat.joinedAt });
+  const paired = await tryPair(you);
+  if (paired) return { queue: null, match: await viewFor(paired, you) };
+  const fresh = (await readSeat(you)) ?? seat;
+  return { queue: queueStatus(fresh), match: null };
+}
+
+export async function leaveQueue(): Promise<QueueJoinResponse> {
+  const you = await identity();
+  const before = await activeMatch(you);
+  if (before) return { queue: null, match: await viewFor(before, you) };
+  await dropSeat(you);
+  const after = await activeMatch(you);
+  if (after) return { queue: null, match: await viewFor(after, you) };
+  return { queue: null, match: null };
 }
 
 export async function createChallenge(body: {
@@ -516,5 +742,13 @@ export async function scrubDuelPost(postId: string | undefined): Promise<number>
     }
   }
   await redis.del(duelPostIndexKey(postId));
+  const waiting = asZMembers(await redis.zRange(duelQueueKey(), 0, 200, { by: 'rank' }));
+  for (const row of waiting) {
+    const seat = await readSeat(row.member);
+    if (seat?.postId === postId) {
+      await dropSeat(seat.username);
+      n += 1;
+    }
+  }
   return n;
 }

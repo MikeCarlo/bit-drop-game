@@ -15,9 +15,12 @@ test('reddit duel UI does not invite by SMS', () => {
     assert.doesNotMatch(src, /twilio/i);
     assert.doesNotMatch(src, /tel:/i);
   }
-  assert.match(lobby, /opponent username/);
-  assert.match(lobby, /PLAY VS PC/);
-  assert.match(lobby, /PLAY VS PC INSTEAD/);
+  assert.match(lobby, /START NOW/);
+  assert.match(lobby, /Don’t wait — play now against a bot\./);
+  assert.match(lobby, /duel-wait-timer/);
+  assert.doesNotMatch(lobby, /opponent username/);
+  assert.doesNotMatch(lobby, /COPY LINK/);
+  assert.match(app, /FIND A CHALLENGER/);
   assert.match(match, /PC games stay off the monthly wins board/);
   assert.match(app, /redditDuelEnabled\(\)/);
   assert.match(app, /pcMode/);

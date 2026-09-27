@@ -1,4 +1,4 @@
-import type { ChallengeView, DuelSettings, DuelState, MatchView, WinsBoard } from './types';
+import type { ChallengeView, DuelSettings, DuelState, MatchView, QueueJoinResult, WinsBoard } from './types';
 
 export class DuelRequestError extends Error {
   constructor(message: string) {
@@ -27,6 +27,18 @@ async function read<T>(res: Response): Promise<T> {
 export const duelApi = {
   state(): Promise<DuelState> {
     return fetch('/api/duel/state').then((res) => read<DuelState>(res));
+  },
+
+  joinQueue(settings: DuelSettings): Promise<QueueJoinResult> {
+    return fetch('/api/duel/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    }).then((res) => read<QueueJoinResult>(res));
+  },
+
+  leaveQueue(): Promise<QueueJoinResult> {
+    return fetch('/api/duel/queue/leave', { method: 'POST' }).then((res) => read<QueueJoinResult>(res));
   },
 
   challenge(opponent: string, settings: DuelSettings): Promise<ChallengeView> {

@@ -6,9 +6,9 @@ The Reddit playtest build (`artifacts/devvit-bit-drop`) bakes `PLATFORM=reddit` 
 
 ## How a match works
 
-1. Challenger opens **1v1 DUEL**, types an opponent’s Reddit username, and sends. Board width, target squares, and speed are the challenger’s menu sliders (same ranges as solo: 8–24, 4–40, 1–9).
-2. The server checks the name with `reddit.getCurrentUsername` / `getUserByUsername` and stores a pending challenge. The opponent sees it in **CHALLENGES FOR YOU** the next time they open the app on that post. A copyable post link (`?duel=<id>`) is optional; the in-app list is the real invite.
-3. Accept starts a match. Challenger is P1. Both clients poll `GET /api/duel/match/:id` about every 800ms. If the Devvit realtime socket is up, a message on the post channel triggers the same refresh.
+1. The menu action is **Find a challenger**. Width, targets, and speed are that player’s menu sliders (same ranges as solo: 8–24, 4–40, 1–9). There is no username box and no text-message invite.
+2. The server puts them on the install’s open-seat queue (`bitdrop:duel:queue`) and the lobby shows a running wait timer.
+3. When a second player is waiting, the server pairs them. The player who queued first is the host: their board settings are the match. Both clients see the match on the next `GET /api/duel/state` (about every 1s in the lobby, then `GET /api/duel/match/:id` about every 800ms). Realtime on the post is best-effort.
 4. Each round is a normal clear-the-targets board. Clearing every target reports a round **win**. Topping out (or garbage with nowhere to land) reports a **loss**. First decisive report wins the round: a win awards that player, a loss awards the opponent. First to **3** round wins takes the match (best of 5).
 5. Garbage matches the live `type:"attack"` payload as closely as the shared scanner allows: each colored match-4+ line sends that line’s color (`0–3`). The server queues it for the opponent. Between pills, those blocks fall in as non-target cells (shuffled columns, stacked from the bottom). A full ceiling loses the round.
 6. After a round, both players tap **NEXT ROUND**. Forfeit gives the match to the opponent.
@@ -17,20 +17,20 @@ Solo high scores (`bitdrop:board` / `HighScoreBoard`) are unchanged. Duel rounds
 
 ## Waiting room
 
-This is the Reddit stand-in for the live site’s friend lobby (room code or “send this link by text”). There is no SMS and no WebRTC room.
+This replaces the live site’s friend lobby (room code or “send this link by text”) and the earlier username challenge screen.
 
-1. P1 opens **1v1 DUEL** and types a Reddit username. Width, targets, and speed are P1’s menu sliders.
-2. Send stores a pending challenge. P1 stays in the lobby on **WAITING FOR {name}** until P2 taps **ACCEPT** under **CHALLENGES FOR YOU** (same post). A copy link is optional; the in-app list is the invite.
-3. While that card is up, **PLAY VS PC INSTEAD** is on it. After **45 seconds** with no accept, the card also says “No answer yet — play vs PC instead?” Switching to the PC cancels the outgoing challenge so P2 does not walk into an empty match.
-4. Accept starts the human match. P1 is seat 0. First to 3. Garbage on. The opponent mini-map from the live site is still not shown.
+1. **Find a challenger** joins the Redis queue for this subreddit install.
+2. The lobby shows the elapsed wait (`m:ss`) and the board the player brought in.
+3. **START NOW** is on that same screen the whole time, with the line **Don’t wait — play now against a bot.** Tapping it leaves the human queue and starts a first-to-3 bot duel immediately. If a human was paired at that moment, the human match starts instead.
+4. ◀ MENU also leaves the queue. A seat that stops polling expires after 3 minutes so a closed app does not sit in the queue forever.
 
-## Play vs PC
+## Play vs a bot
 
-**PLAY VS PC** is on the Reddit menu and on the duel screen (always, not only after the wait). It uses the same sliders, first to 3, and garbage colors.
+**START NOW** is the bot path. It is not a second menu item and it does not stay in the human queue.
 
 The PC is a local heuristic (`src/duel/botBoard.ts`). Each pill it hard-drops the placement that clears the most targets, then sends attacks, then stays low. It is not a perfect player. Faster speed settings make it drop more often.
 
-PC matches never call `/api/duel/*`. They are not written to `bitdrop:duel:wins:YYYY-MM`. The match-over screen says PC games stay off that board. Quitting a PC game returns to the menu and does not credit anyone.
+Bot matches do not call round or win routes. They are not written to `bitdrop:duel:wins:YYYY-MM`. The match-over screen says PC games stay off that board. Quitting a bot game returns to the menu and does not credit anyone.
 
 ## What we did not use
 
@@ -38,7 +38,8 @@ PC matches never call `/api/duel/*`. They are not written to `bitdrop:duel:wins:
 | --- | --- |
 | SMS / `tel:` / text-message invite | Not used on Reddit. Web live site still has “send this link by text”; this repo’s web app does not gain that path. |
 | `reddit.sendPrivateMessage` | Deprecated in Devvit and documented as no longer reliable. No DMs. |
-| Post comment ping | Skipped so challenges do not spam the game post. Pending list + optional copy link instead. |
+| Post comment ping | Skipped. Matchmaking is the in-app queue, not a comment. |
+| Username challenge as the main invite | Not the lobby. Pairing is the open-seat queue. |
 | Opponent mini-map | Not ported. Garbage and the win count are the shared state. |
 | Devvit realtime as the only transport | `realtime.send(postId, { kind: "duel", matchId })` is best-effort. If it throws, play continues on the poll. The web bundle never imports `@devvit/web/client`; `game.tsx` installs `window.__bitdropConnectRealtime`. |
 
@@ -48,7 +49,10 @@ Per subreddit install. Usernames are the Reddit username, same as solo score sub
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `bitdrop:duel:challenge:{id}` | string JSON | Challenge record |
+| `bitdrop:duel:queue` | sorted set, member = user key, score = joinedAt | Open seats waiting for a human |
+| `bitdrop:duel:seat:{username}` | string JSON | That waiter’s board settings and post id. Expires in 3 minutes unless the lobby refreshes it |
+| `bitdrop:duel:pairlock` | hash, field = user key | Short lock so two polls cannot pair the same seat twice |
+| `bitdrop:duel:challenge:{id}` | string JSON | Legacy direct challenge record. Not used by the lobby |
 | `bitdrop:duel:inbox:{username}` | hash, field = challenge id | Pending challenges for that player |
 | `bitdrop:duel:outbox:{username}` | hash | Pending challenges they sent |
 | `bitdrop:duel:active:{username}` | string | Current match id |
@@ -74,8 +78,10 @@ Per subreddit install. Usernames are the Reddit username, same as solo score sub
 
 All routes are under `/api/duel` and take the player from `reddit.getCurrentUsername()`. The client does not get to pick the stored name.
 
-- `GET /state` — username, inbox, outbox, active match
-- `POST /challenge` — `{ opponent, width, viruses, speed }`
+- `GET /state` — username, active match, and `queue: { joinedAt, waitedMs }` while waiting
+- `POST /queue` — `{ width, viruses, speed }` joins the open-seat queue (or returns a match if one is already active or pairing succeeds)
+- `POST /queue/leave` — drop the seat. Returns a match if a human was paired before the leave landed
+- `POST /challenge` — `{ opponent, width, viruses, speed }` legacy direct challenge, not shown in the lobby
 - `POST /challenge/:id/accept|decline|cancel`
 - `GET /match/:id`
 - `POST /match/:id/attack` — `{ attackId, round, colors }`

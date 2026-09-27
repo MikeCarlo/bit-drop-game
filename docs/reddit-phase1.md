@@ -4,7 +4,7 @@ Website vs Reddit inventory, scoring rules, and gap list: [website-vs-reddit-par
 
 Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published).
 
-Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). They use the Devvit server, not SMS. The web app’s text-link friend duel stays on the live site. **PLAY VS PC** is a local opponent on that same Reddit UI; those games are not on the monthly board.
+Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). **Find a challenger** joins a Devvit Redis queue. **START NOW** on that lobby plays a local bot and does not count on the monthly board. The web app’s text-link friend duel stays on the live site. There is no SMS.
 
 ## What already existed
 
@@ -84,6 +84,6 @@ Devvit pattern (per subreddit install, not global):
 
 On **web**, `ENABLE_MULTIPLAYER=true` still shows `CompeteStub` (disabled). It does not start a match and it does not send texts.
 
-On **Reddit**, the Devvit build turns the flag on and replaces that stub with **1v1 DUEL**. See [reddit-duel.md](./reddit-duel.md). `resolvePlayMode('compete')` is `compete` only in that Reddit case. `startCompete()` stays null — 2–4 player rooms are not a mode. The monthly board is `GET /api/duel/wins`, not `HighScoreBoard`.
+On **Reddit**, the Devvit build turns the flag on and replaces that stub with **FIND A CHALLENGER**. See [reddit-duel.md](./reddit-duel.md). `resolvePlayMode('compete')` is `compete` only in that Reddit case. `startCompete()` stays null — 2–4 player rooms are not a mode. The monthly board is `GET /api/duel/wins`, not `HighScoreBoard`. Bot games are not on that board.
 
 Out of scope: 4-player competition, YouTube Playables, and `devvit publish` (Mike publishes after playtest).

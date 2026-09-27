@@ -14,6 +14,14 @@ export function pcWaitNudge(waitedMs: number): boolean {
   return waitedMs >= PC_WAIT_MS;
 }
 
+/** Elapsed lobby wait, `m:ss`. */
+export function formatWait(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function settlePcRound(
   wins: readonly [number, number],
   playerWon: boolean,

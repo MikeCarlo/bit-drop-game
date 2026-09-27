@@ -40,12 +40,23 @@ export type ChallengeView = {
   incoming: boolean;
 };
 
+export type QueueStatus = {
+  joinedAt: number;
+  waitedMs: number;
+};
+
 export type DuelState = {
   username: string;
   postId: string;
   inbox: ChallengeView[];
   outbox: ChallengeView[];
   active: MatchView | null;
+  queue: QueueStatus | null;
+};
+
+export type QueueJoinResult = {
+  queue: QueueStatus | null;
+  match: MatchView | null;
 };
 
 export type WinsRow = { player: string; wins: number; rank: number };

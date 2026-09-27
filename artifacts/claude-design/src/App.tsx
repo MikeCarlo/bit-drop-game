@@ -1704,16 +1704,10 @@ export default class App extends React.Component<object, State> {
                       )}
                       {redditDuelEnabled() && (
                         <button className="bitdrop-btn bitdrop-btn-duel" style={{ flex: 1 }} onClick={() => this.openDuel()}>
-                          1v1 DUEL
+                          FIND A CHALLENGER
                         </button>
                       )}
                     </div>
-                  )}
-
-                  {redditDuelEnabled() && (
-                    <button className="bitdrop-btn bitdrop-btn-pc" onClick={() => this.startPcDuel()}>
-                      PLAY VS PC
-                    </button>
                   )}
 
                   {!redditDuelEnabled() && <CompeteStub />}
