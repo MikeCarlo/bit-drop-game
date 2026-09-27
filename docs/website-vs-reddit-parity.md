@@ -216,7 +216,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Next-pill preview | **Website-only** | |
 | Score popups / round summary | **Website-only** | |
 | Best level | **Website-only** | `bitdrop-best-level`. |
-| Friend match / P2P duel / garbage | **Website text-link duel stays on the live site.** Reddit uses **Find a challenger**: a Devvit Redis open-seat queue, a visible wait timer, and **START NOW** for a local bot — see [reddit-duel.md](./reddit-duel.md). Not SMS, not a username box, not the Sep-2 WebRTC room. Bot wins are not on the monthly board. |
+| Friend match / P2P duel / garbage | **Website text-link duel stays on the live site.** Reddit uses **Find a challenger**: a Devvit Redis open-seat queue, a visible wait timer, and **START NOW** for a local bot — see [reddit-duel.md](./reddit-duel.md). Not SMS, not a username box, not the Sep-2 WebRTC room. Human wins and bot wins are separate monthly boards. |
 | Bidirectional clear scan | **Different** (minor) | Live scans both ways; GitHub one way. Ordinary + rainbow-from-either-end runs still clear. |
 | First-run tutorial gate | **Parity** | `bitdrop-tut`. |
 

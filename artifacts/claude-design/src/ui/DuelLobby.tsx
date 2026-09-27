@@ -11,12 +11,14 @@ export function DuelLobby({
   onPlay,
   onVsPc,
   onWins,
+  onBotWins,
 }: {
   settings: DuelSettings;
   onBack: () => void;
   onPlay: (match: MatchView) => void;
   onVsPc: () => void;
   onWins: () => void;
+  onBotWins: () => void;
 }) {
   const [origin, setOrigin] = React.useState(() => Date.now());
   const [now, setNow] = React.useState(() => Date.now());
@@ -139,7 +141,10 @@ export function DuelLobby({
           Don’t wait — play now against a bot.
         </div>
 
-        <button type="button" onClick={onWins} style={ghostBtn}>MONTHLY DUEL WINS</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onWins} style={{ ...ghostBtn, flex: 1 }}>MONTHLY DUEL WINS</button>
+          <button type="button" onClick={onBotWins} style={{ ...ghostBtn, flex: 1 }}>BOT BOARD</button>
+        </div>
       </div>
     </div>
   );

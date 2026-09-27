@@ -11,7 +11,7 @@ BIT·DROP is a short puzzle game for Reddit. You drop two-color pills, line up *
 3. **Match 4.** Line up 4 or more of one color (row or column) to clear those pieces. Rainbow blocks match any color.
 4. **Targets.** Squares with a face are targets. Clear every target to win the board.
 5. **Scores.** Points count only when a drop also clears at least one target. After a solo game, your score is saved to this community’s high-score board under your Reddit username.
-6. **1v1 duel (Reddit only).** From the menu, **FIND A CHALLENGER**. You wait in a lobby until another player on this community is waiting too. The timer shows how long you have waited. **START NOW** leaves the queue and plays a bot (first to 3, with garbage). Bot games are not on the monthly duel-wins board. Human wins are. No text message and no username to type.
+6. **1v1 duel (Reddit only).** From the menu, **FIND A CHALLENGER**. You wait in a lobby until another player on this community is waiting too. The timer shows how long you have waited. **START NOW** leaves the queue and plays a bot (first to 3, with garbage). Beating the bot counts on **BOT BOARD** (monthly). Beating a person counts on **MONTHLY DUEL WINS**. The two boards do not share wins. No text message and no username to type.
 
 Controls: drag left or right to move, tap to rotate, swipe down to hard drop. You can also use the on-screen tutorial and the **SCORING** / **HIGH SCORES** buttons.
 

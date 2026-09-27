@@ -1,5 +1,6 @@
 import React from 'react';
-import { duelApi } from '../duel/api';
+import { duelApi, DuelRequestError } from '../duel/api';
+import { isBotCreditId } from '../duel/pcMatch';
 import type { MatchView, WinsBoard } from '../duel/types';
 import { DuelWinsBoard } from './DuelWinsBoard';
 
@@ -25,21 +26,40 @@ export function DuelMatch({
   onRetry?: () => void;
 }) {
   const [wins, setWins] = React.useState<WinsBoard | null>(null);
+  const [localError, setLocalError] = React.useState<string | null>(null);
   const youWonRound = match.roundWinner != null && match.roundWinner.toLowerCase() === match.you.toLowerCase();
   const youWonMatch = match.winner != null && match.winner.toLowerCase() === match.you.toLowerCase();
 
   React.useEffect(() => {
-    if (vsPc || match.phase !== 'complete') return;
+    if (match.phase !== 'complete') return;
     let stop = false;
-    void duelApi.wins().then((board) => {
+    const load = async () => {
+      if (vsPc) {
+        if (youWonMatch && isBotCreditId(match.id)) {
+          try {
+            const board = await duelApi.recordBotWin(match.id);
+            if (!stop) setWins(board);
+            return;
+          } catch (err) {
+            if (!stop) {
+              setLocalError(err instanceof DuelRequestError ? err.message : 'Could not save the bot win');
+            }
+          }
+        }
+        const board = await duelApi.botWins();
+        if (!stop) setWins(board);
+        return;
+      }
+      const board = await duelApi.wins();
       if (!stop) setWins(board);
-    }).catch(() => {
+    };
+    void load().catch(() => {
       if (!stop) setWins(null);
     });
     return () => {
       stop = true;
     };
-  }, [vsPc, match.phase, match.id, match.winner]);
+  }, [vsPc, match.phase, match.id, match.winner, youWonMatch]);
 
   const title =
     match.phase === 'complete'
@@ -62,7 +82,9 @@ export function DuelMatch({
           {match.phase === 'between' && match.youReady && !match.opponentReady && ' · waiting for your opponent'}
           {match.phase === 'playing' && !error && ' · next round is starting'}
         </div>
-        {error && <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{error}</div>}
+        {(error || localError) && (
+          <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{error || localError}</div>
+        )}
         {match.phase === 'between' && !match.youReady && (
           <button type="button" disabled={busy} onClick={onReady} style={goBtn}>NEXT ROUND</button>
         )}
@@ -74,8 +96,21 @@ export function DuelMatch({
         )}
         {match.phase === 'complete' && vsPc && (
           <div style={{ fontFamily: BODY, fontSize: 12, color: '#9a9aa0', lineHeight: 1.45 }}>
-            PC games stay off the monthly wins board.
+            {youWonMatch
+              ? 'This win is on the bot board only.'
+              : 'A loss to the PC is not added to either board.'}
           </div>
+        )}
+        {match.phase === 'complete' && vsPc && wins && (
+          <DuelWinsBoard
+            month={wins.month}
+            rows={wins.rows}
+            you={match.you}
+            compact
+            title="BOT BOARD"
+            hint="wins vs the PC"
+            empty="no bot wins this month"
+          />
         )}
         {match.phase !== 'complete' && !vsPc && (
           <button type="button" disabled={busy} onClick={onForfeit} style={ghostBtn}>FORFEIT</button>

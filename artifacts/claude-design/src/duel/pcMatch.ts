@@ -1,9 +1,19 @@
 import type { DuelPhase, DuelSettings, MatchView } from './types';
 
-/** Local opponent. Wins against this name are not written to the monthly board. */
+/** Local opponent. A match win is recorded on the monthly bot board, not the human board. */
 export const PC_NAME = 'PC';
 export const PC_MATCH_ID = 'pc-local';
 export const PC_YOU = 'You';
+
+/** Same shape the server accepts in `isBotCreditId`. */
+export function newBotMatchId(): string {
+  const id = globalThis.crypto?.randomUUID?.() ?? '00000000-0000-4000-8000-000000000000';
+  return `bot-${id}`;
+}
+
+export function isBotCreditId(id: string): boolean {
+  return /^bot-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
 
 /** How long P1 waits in the challenge room before we nudge Play vs PC. */
 export const PC_WAIT_MS = 45_000;
@@ -51,9 +61,10 @@ export function buildPcView(args: {
   phase: DuelPhase;
   roundWinner: string | null;
   winner: string | null;
+  id?: string;
 }): MatchView {
   return {
-    id: PC_MATCH_ID,
+    id: args.id && isBotCreditId(args.id) ? args.id : PC_MATCH_ID,
     you: PC_YOU,
     opponent: PC_NAME,
     seat: 0,
@@ -77,5 +88,5 @@ export function buildPcView(args: {
 }
 
 export function isPcMatch(match: { id?: string } | null | undefined): boolean {
-  return match?.id === PC_MATCH_ID;
+  return !!match && (match.id === PC_MATCH_ID || isBotCreditId(match.id ?? ''));
 }

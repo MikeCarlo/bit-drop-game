@@ -9,20 +9,28 @@ export function DuelWinsBoard({
   you,
   onBack,
   compact = false,
+  title = 'DUEL WINS',
+  hint = 'wins vs players',
+  empty = 'no duel wins this month',
 }: {
   month: string;
   rows: WinsRow[];
   you?: string;
   onBack?: () => void;
   compact?: boolean;
+  title?: string;
+  hint?: string;
+  empty?: string;
 }) {
   const shown = compact ? rows.slice(0, 5) : rows;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 8 : 12, width: '100%', minHeight: 0, flex: compact ? undefined : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div>
-          <div style={{ fontSize: compact ? 10 : 13, color: '#d9cf4a' }}>DUEL WINS</div>
-          <div style={{ fontFamily: BODY, fontSize: 11, color: '#8e8e94', marginTop: 4 }}>{month} UTC</div>
+          <div style={{ fontSize: compact ? 10 : 13, color: '#d9cf4a' }}>{title}</div>
+          <div style={{ fontFamily: BODY, fontSize: 11, color: '#8e8e94', marginTop: 4 }}>
+            {month ? `${month} UTC` : 'UTC'} · {hint}
+          </div>
         </div>
         {onBack && (
           <button
@@ -36,7 +44,7 @@ export function DuelWinsBoard({
       </div>
       {shown.length === 0 ? (
         <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 14, color: '#9a9aa0', textAlign: 'center', lineHeight: 1.6 }}>
-          no duel wins this month
+          {empty}
         </div>
       ) : (
         <div className={compact ? undefined : 'bitdrop-scores-list'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

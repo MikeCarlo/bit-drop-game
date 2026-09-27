@@ -13,7 +13,9 @@ import {
   getMatch,
   joinQueue,
   leaveQueue,
+  listBotWins,
   listWins,
+  recordBotWin,
   readyNext,
   reportRound,
 } from '../core/duel';
@@ -42,6 +44,28 @@ duel.get('/wins', async (c) => {
     const raw = c.req.query('limit');
     const parsed = raw ? Number(raw) : 10;
     return c.json(await listWins(Number.isFinite(parsed) ? parsed : 10));
+  } catch (error) {
+    const f = fail(error);
+    return c.json<ErrorResponse>(f.body, f.status);
+  }
+});
+
+duel.get('/bot-wins', async (c) => {
+  try {
+    const raw = c.req.query('limit');
+    const parsed = raw ? Number(raw) : 10;
+    return c.json(await listBotWins(Number.isFinite(parsed) ? parsed : 10));
+  } catch (error) {
+    const f = fail(error);
+    return c.json<ErrorResponse>(f.body, f.status);
+  }
+});
+
+duel.post('/bot-win', async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as { matchId?: unknown };
+    const matchId = typeof body.matchId === 'string' ? body.matchId : '';
+    return c.json(await recordBotWin(matchId));
   } catch (error) {
     const f = fail(error);
     return c.json<ErrorResponse>(f.body, f.status);

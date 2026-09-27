@@ -3,10 +3,13 @@ import { test } from 'node:test';
 import {
   assembleMatchView,
   clampDuelSettings,
+  duelBotCreditKey,
+  duelBotWinsKey,
   duelQueueKey,
   duelSeatKey,
   earlierHost,
   duelWinsKey,
+  isBotCreditId,
   filterAttackColors,
   matchPhase,
   normalizeRedditUsername,
@@ -40,7 +43,14 @@ test('UTC month key rolls on the UTC boundary', () => {
   assert.equal(utcMonth(Date.UTC(2026, 8, 30, 23, 59)), '2026-09');
   assert.equal(utcMonth(Date.UTC(2026, 9, 1, 0, 0)), '2026-10');
   assert.equal(duelWinsKey('2026-09'), 'bitdrop:duel:wins:2026-09');
+  assert.equal(duelBotWinsKey('2026-09'), 'bitdrop:duel:botwins:2026-09');
+  assert.notEqual(duelWinsKey('2026-09'), duelBotWinsKey('2026-09'));
   assert.notEqual(duelWinsKey('2026-09'), 'bitdrop:board');
+  assert.notEqual(duelBotWinsKey('2026-09'), 'bitdrop:board');
+  assert.equal(duelBotCreditKey(), 'bitdrop:duel:botcredited');
+  assert.notEqual(duelBotCreditKey(), 'bitdrop:duel:credited');
+  assert.equal(isBotCreditId('bot-3f1c2a90-7b14-4c2e-9a11-0c5d6e7f8091'), true);
+  assert.equal(isBotCreditId('3f1c2a90-7b14-4c2e-9a11-0c5d6e7f8091'), false);
 });
 
 test('username normalize strips u/ and rejects junk', () => {

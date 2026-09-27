@@ -66,6 +66,25 @@ export function duelWinsMetaKey(month: string): string {
   return `bitdrop:duel:wins:meta:${month}`;
 }
 
+/** Monthly wins against the PC. Never the human `bitdrop:duel:wins:*` set. */
+export function duelBotWinsKey(month: string): string {
+  return `bitdrop:duel:botwins:${month}`;
+}
+
+export function duelBotWinsMetaKey(month: string): string {
+  return `bitdrop:duel:botwins:meta:${month}`;
+}
+
+/** One credit per local bot match. Separate from `bitdrop:duel:credited`. */
+export function duelBotCreditKey(): string {
+  return 'bitdrop:duel:botcredited';
+}
+
+/** Client id for one Play-vs-PC match. Human match ids are plain UUIDs. */
+export function isBotCreditId(id: string): boolean {
+  return /^bot-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 export function duelInboxKey(username: string): string {
   return `bitdrop:duel:inbox:${userKey(username)}`;
 }

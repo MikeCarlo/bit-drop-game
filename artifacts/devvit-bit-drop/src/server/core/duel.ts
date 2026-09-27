@@ -8,7 +8,11 @@ import {
   DUEL_WINS_TTL_SECONDS,
   duelActiveKey,
   duelAttackKey,
+  duelBotCreditKey,
+  duelBotWinsKey,
+  duelBotWinsMetaKey,
   duelChallengeKey,
+  isBotCreditId,
   duelCreditKey,
   duelInboxKey,
   duelMatchKey,
@@ -263,6 +267,22 @@ async function creditWin(matchId: string, winner: string): Promise<void> {
   await redis.expire(duelWinsKey(month), DUEL_WINS_TTL_SECONDS);
   await redis.hSet(duelWinsMetaKey(month), { [winner]: JSON.stringify({ lastWinAt: Date.now() }) });
   await redis.expire(duelWinsMetaKey(month), DUEL_WINS_TTL_SECONDS);
+}
+
+/** A win against the PC. Writes only the bot-wins keys. */
+export async function recordBotWin(matchId: string): Promise<WinsResponse> {
+  const you = await identity();
+  if (!isBotCreditId(matchId)) throw new DuelError('Bad bot match');
+  const fresh = await claimField(duelBotCreditKey(), matchId, you);
+  await touch(duelBotCreditKey(), DUEL_WINS_TTL_SECONDS);
+  if (fresh) {
+    const month = utcMonth();
+    await redis.zIncrBy(duelBotWinsKey(month), you, 1);
+    await redis.expire(duelBotWinsKey(month), DUEL_WINS_TTL_SECONDS);
+    await redis.hSet(duelBotWinsMetaKey(month), { [you]: JSON.stringify({ lastWinAt: Date.now() }) });
+    await redis.expire(duelBotWinsMetaKey(month), DUEL_WINS_TTL_SECONDS);
+  }
+  return listBotWins();
 }
 
 async function finishIfNeeded(match: StoredMatch, view: MatchView): Promise<StoredMatch> {
@@ -704,9 +724,8 @@ export async function ackAttacks(id: string, ids: unknown): Promise<void> {
   await redis.hDel(duelAttackKey(id), fields);
 }
 
-export async function listWins(limit = 10): Promise<WinsResponse> {
+async function listRanked(key: string, limit: number): Promise<WinsResponse> {
   const month = utcMonth();
-  const key = duelWinsKey(month);
   const cap = Math.max(1, Math.min(limit, 20));
   const ranked = (await redis.zRange(key, 0, 49, { reverse: true, by: 'rank' })) as unknown as {
     member: string;
@@ -719,6 +738,14 @@ export async function listWins(limit = 10): Promise<WinsResponse> {
     })),
   );
   return { month, rows: rows.slice(0, cap) };
+}
+
+export async function listWins(limit = 10): Promise<WinsResponse> {
+  return listRanked(duelWinsKey(utcMonth()), limit);
+}
+
+export async function listBotWins(limit = 10): Promise<WinsResponse> {
+  return listRanked(duelBotWinsKey(utcMonth()), limit);
 }
 
 export async function scrubDuelPost(postId: string | undefined): Promise<number> {

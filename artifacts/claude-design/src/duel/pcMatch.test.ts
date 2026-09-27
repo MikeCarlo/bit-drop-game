@@ -47,6 +47,7 @@ test('PC view is not a server match', () => {
   });
   assert.equal(isPcMatch(view), true);
   assert.equal(isPcMatch({ id: 'abc', opponent: 'PC' }), false);
+  assert.equal(isPcMatch({ id: 'bot-3f1c2a90-7b14-4c2e-9a11-0c5d6e7f8091' }), true);
   assert.equal(view.postId, '');
   assert.equal(view.opponentReady, true);
   assert.deepEqual(view.attacks, []);

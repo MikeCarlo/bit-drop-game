@@ -4,7 +4,7 @@ import { duelApi, DuelRequestError, subscribeDuel } from './duel/api';
 import { noteClearRun } from './duel/attack';
 import { BotBoard } from './duel/botBoard';
 import { planGarbage, shuffleColumns, type GarbageDrop } from './duel/garbage';
-import { buildPcView, isPcMatch, settlePcRound } from './duel/pcMatch';
+import { buildPcView, isPcMatch, newBotMatchId, settlePcRound } from './duel/pcMatch';
 import type { MatchView, WinsRow } from './duel/types';
 import { FLAGS, playModeLabel } from './flags';
 import { redditDuelEnabled } from './modes';
@@ -81,6 +81,8 @@ interface State {
   duelWins: WinsRow[];
   duelMonth: string;
   duelYou: string;
+  duelBoard: 'human' | 'bot';
+  duelWinsBack: 'duel' | 'scores';
 }
 
 // ── game component ─────────────────────────────────────────────────────────
@@ -104,6 +106,8 @@ export default class App extends React.Component<object, State> {
     duelWins: [],
     duelMonth: '',
     duelYou: '',
+    duelBoard: 'human',
+    duelWinsBack: 'duel',
     pcLeft: 0,
   };
 
@@ -145,6 +149,7 @@ export default class App extends React.Component<object, State> {
   pcTimer = 0;
   pcWins: [number, number] = [0, 0];
   pcRoundClosed = false;
+  pcCreditId = '';
   particles: Particle[] = [];
   dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
@@ -813,14 +818,16 @@ export default class App extends React.Component<object, State> {
     this.setState({ screen: 'duel', duelError: null, paused: false });
   }
 
-  /** Local opponent. Same board sliders, first to 3, garbage. No server credit. */
+  /** Local opponent. Same board sliders, first to 3, garbage. A match win hits the bot board only. */
   startPcDuel() {
     if (!redditDuelEnabled()) return;
     this.stopDuelSync();
     this.pcMode = true;
     this.pcWins = [0, 0];
     this.pcRoundClosed = false;
+    this.pcCreditId = newBotMatchId();
     const view = buildPcView({
+      id: this.pcCreditId,
       settings: { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed },
       wins: [0, 0],
       round: 1,
@@ -831,14 +838,14 @@ export default class App extends React.Component<object, State> {
     this.beginDuelRound(view);
   }
 
-  async openDuelWins() {
-    this.setState({ screen: 'duelwins' });
+  async openDuelBoard(kind: 'human' | 'bot', back: 'duel' | 'scores') {
+    this.setState({ screen: 'duelwins', duelBoard: kind, duelWinsBack: back, duelError: null, duelWins: [] });
     try {
-      const board = await duelApi.wins();
+      const board = kind === 'bot' ? await duelApi.botWins() : await duelApi.wins();
       this.setState({ duelWins: board.rows, duelMonth: board.month });
     } catch (err) {
       this.setState({
-        duelError: err instanceof DuelRequestError ? err.message : 'Could not load duel wins',
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not load the board',
       });
     }
   }
@@ -874,7 +881,7 @@ export default class App extends React.Component<object, State> {
   }
 
   ingestDuel(view: MatchView) {
-    if (this.pcMode || view.id === 'pc-local') return;
+    if (this.pcMode || isPcMatch(view)) return;
     this.duelMatchId = view.id;
     this.setState({ duelMatch: view, duelYou: view.you });
     this.startDuelSync(view.postId);
@@ -963,6 +970,7 @@ export default class App extends React.Component<object, State> {
     this.pcWins = settled.wins;
     const match = this.state.duelMatch;
     const view = buildPcView({
+      id: this.pcCreditId,
       settings: {
         width: match?.width ?? this.state.width,
         viruses: match?.viruses ?? this.state.viruses,
@@ -1131,6 +1139,7 @@ export default class App extends React.Component<object, State> {
       this.pcRoundClosed = false;
       const match = this.state.duelMatch;
       this.beginDuelRound(buildPcView({
+        id: this.pcCreditId,
         settings: {
           width: match?.width ?? this.state.width,
           viruses: match?.viruses ?? this.state.viruses,
@@ -1185,6 +1194,7 @@ export default class App extends React.Component<object, State> {
     this.pcMode = false;
     this.pcWins = [0, 0];
     this.pcRoundClosed = false;
+    this.pcCreditId = '';
     this.haltDuelBoard();
     this.duelMatchId = null;
     this.duelRoundRunning = 0;
@@ -1750,7 +1760,8 @@ export default class App extends React.Component<object, State> {
                 onBack={() => this.setState({ screen: 'menu' })}
                 onPlay={(match) => this.joinDuel(match)}
                 onVsPc={() => this.startPcDuel()}
-                onWins={() => { void this.openDuelWins(); }}
+                onWins={() => { void this.openDuelBoard('human', 'duel'); }}
+                onBotWins={() => { void this.openDuelBoard('bot', 'duel'); }}
               />
             )
           )}
@@ -1759,11 +1770,21 @@ export default class App extends React.Component<object, State> {
             <div className="bitdrop-scores-overlay" data-testid="bitdrop-duel-wins">
               <div className="bitdrop-scores-panel">
                 <DuelWinsBoard
-                  month={s.duelMonth || 'UTC'}
+                  month={s.duelMonth}
                   rows={s.duelWins}
                   you={s.duelYou}
-                  onBack={() => this.setState({ screen: 'duel' })}
+                  title={s.duelBoard === 'bot' ? 'BOT BOARD' : 'DUEL WINS'}
+                  hint={s.duelBoard === 'bot' ? 'wins vs the PC' : 'wins vs players'}
+                  empty={s.duelBoard === 'bot' ? 'no bot wins this month' : 'no duel wins this month'}
+                  onBack={() => this.setState({ screen: s.duelWinsBack })}
                 />
+                <button
+                  type="button"
+                  onClick={() => { void this.openDuelBoard(s.duelBoard === 'bot' ? 'human' : 'bot', s.duelWinsBack); }}
+                  style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#fff', border: '2px solid #6e6e72', padding: '8px 12px', cursor: 'pointer' }}
+                >
+                  {s.duelBoard === 'bot' ? 'MONTHLY DUEL WINS' : 'BOT BOARD'}
+                </button>
                 {s.duelError && (
                   <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, color: '#e07070' }}>{s.duelError}</div>
                 )}
@@ -1776,6 +1797,16 @@ export default class App extends React.Component<object, State> {
             <div className="bitdrop-scores-overlay" data-testid="bitdrop-scores-overlay">
               <div className="bitdrop-scores-panel">
                 <HighScoreBoard scores={s.scores} highlightId={s.lastScoreId} onBack={() => this.closeScores()} />
+                {redditDuelEnabled() && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => { void this.openDuelBoard('human', 'scores'); }}>
+                      MONTHLY DUEL WINS
+                    </button>
+                    <button type="button" className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => { void this.openDuelBoard('bot', 'scores'); }}>
+                      BOT BOARD
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

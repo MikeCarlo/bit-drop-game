@@ -30,7 +30,7 @@ This replaces the live site’s friend lobby (room code or “send this link by 
 
 The PC is a local heuristic (`src/duel/botBoard.ts`). Each pill it hard-drops the placement that clears the most targets, then sends attacks, then stays low. It is not a perfect player. Faster speed settings make it drop more often.
 
-Bot matches do not call round or win routes. They are not written to `bitdrop:duel:wins:YYYY-MM`. The match-over screen says PC games stay off that board. Quitting a bot game returns to the menu and does not credit anyone.
+A win against the PC calls `POST /api/duel/bot-win` once, with a `bot-<uuid>` match id. That increments **only** `bitdrop:duel:botwins:YYYY-MM`. It does not call the human round route and it does not touch `bitdrop:duel:wins:YYYY-MM`. A loss to the PC increments neither board. Quitting back to the menu does not credit anyone. The match-over screen says the win is on the bot board only.
 
 ## What we did not use
 
@@ -61,17 +61,20 @@ Per subreddit install. Usernames are the Reddit username, same as solo score sub
 | `bitdrop:duel:ready:{id}:{round}` | hash | Who tapped next round |
 | `bitdrop:duel:atk:{id}` | hash, field = attack id | Garbage waiting for the opponent |
 | `bitdrop:duel:atkseq:{id}` | int | Order for garbage drops |
-| `bitdrop:duel:credited` | hash, field = match id | Winner already counted. Stops double credit |
+| `bitdrop:duel:credited` | hash, field = match id | Human winner already counted. Stops double credit |
+| `bitdrop:duel:botcredited` | hash, field = `bot-<uuid>` | Bot-match win already counted. Not the human credit hash |
 | `bitdrop:duel:post:{postId}` | hash | Ids to drop if that post is deleted |
-| `bitdrop:duel:wins:YYYY-MM` | sorted set, member = username, score = wins | Monthly duel-wins board |
-| `bitdrop:duel:wins:meta:YYYY-MM` | hash | `{ lastWinAt }` per winner |
+| `bitdrop:duel:wins:YYYY-MM` | sorted set, member = username, score = wins | Monthly **human** duel-wins board |
+| `bitdrop:duel:wins:meta:YYYY-MM` | hash | `{ lastWinAt }` per human winner |
+| `bitdrop:duel:botwins:YYYY-MM` | sorted set, member = username, score = wins | Monthly **bot** wins. Same UTC month, different key |
+| `bitdrop:duel:botwins:meta:YYYY-MM` | hash | `{ lastWinAt }` per bot-board winner |
 
 `YYYY-MM` is the UTC calendar month (`utcMonth` in `src/shared/duel.ts`). October is a new key, so the board resets with no cron. Rank is win count descending; equal wins break alphabetically by username.
 
 ### TTL
 
 - Challenge, match, inbox, attacks: **7 days** after the last write.
-- Monthly `bitdrop:duel:wins:*` and the credit hash: **40 days** after the last write. That is longer than the solo 30-day score window so a board opened on day 1 of a 31-day month is still there at month end. Usernames on the wins board drop when that key expires.
+- Monthly `bitdrop:duel:wins:*`, `bitdrop:duel:botwins:*`, and both credit hashes: **40 days** after the last write. That is longer than the solo 30-day score window so a board opened on day 1 of a 31-day month is still there at month end. Usernames drop when that month key expires. A new UTC month is a new key for both boards, so both reset with no cron.
 - `onPostDelete` removes challenge and match records indexed for that post (and the usernames on those rows). The monthly wins sorted set is not per-post; those usernames stay until the `YYYY-MM` key expires.
 
 ## HTTP
@@ -89,7 +92,9 @@ All routes are under `/api/duel` and take the player from `reddit.getCurrentUser
 - `POST /match/:id/ready`
 - `POST /match/:id/forfeit`
 - `POST /match/:id/ack` — `{ ids }`
-- `GET /wins` — `{ month, rows: [{ player, wins, rank }] }`
+- `GET /wins` — monthly human board `{ month, rows: [{ player, wins, rank }] }`
+- `GET /bot-wins` — monthly bot board, same shape, different Redis key
+- `POST /bot-win` — `{ matchId: "bot-<uuid>" }` counts one win for the signed-in user on the bot board only. A repeat id does not count again
 
 ## Code map
 
@@ -100,4 +105,4 @@ All routes are under `/api/duel` and take the player from `reddit.getCurrentUser
 | Client API | `artifacts/claude-design/src/duel/` |
 | Lobby, between-rounds, wins | `src/ui/DuelLobby.tsx`, `DuelMatch.tsx`, `DuelWinsBoard.tsx` |
 | Boards and garbage | `App.tsx` (`duelLive`, `noteClearRun`, `planGarbage`) |
-| Play vs PC | `src/duel/botBoard.ts`, `src/duel/pcMatch.ts` — local only, not the monthly board |
+| Play vs PC | `src/duel/botBoard.ts`, `src/duel/pcMatch.ts` — local play. A match win is `POST /bot-win` onto the monthly bot board |

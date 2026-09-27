@@ -110,6 +110,19 @@ export const duelApi = {
   wins(): Promise<WinsBoard> {
     return fetch('/api/duel/wins').then((res) => read<WinsBoard>(res));
   },
+
+  botWins(): Promise<WinsBoard> {
+    return fetch('/api/duel/bot-wins').then((res) => read<WinsBoard>(res));
+  },
+
+  /** One human win against the PC. Does not touch the monthly human board. */
+  recordBotWin(matchId: string): Promise<WinsBoard> {
+    return fetch('/api/duel/bot-win', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId }),
+    }).then((res) => read<WinsBoard>(res));
+  },
 };
 
 type RealtimeConnect = (
