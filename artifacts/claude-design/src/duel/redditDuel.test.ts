@@ -16,7 +16,12 @@ test('reddit duel UI does not invite by SMS', () => {
     assert.doesNotMatch(src, /tel:/i);
   }
   assert.match(lobby, /opponent username/);
+  assert.match(lobby, /PLAY VS PC/);
+  assert.match(lobby, /PLAY VS PC INSTEAD/);
+  assert.match(match, /PC games stay off the monthly wins board/);
   assert.match(app, /redditDuelEnabled\(\)/);
+  assert.match(app, /pcMode/);
+  assert.doesNotMatch(app, /duelApi\.round\([\s\S]{0,80}pcMode/);
 });
 
 test('devvit build turns multiplayer on', () => {

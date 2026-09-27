@@ -1,5 +1,6 @@
 import React from 'react';
 import { duelApi, DuelRequestError } from '../duel/api';
+import { pcWaitNudge } from '../duel/pcMatch';
 import type { DuelSettings, DuelState, MatchView } from '../duel/types';
 
 const BODY = 'ui-monospace,Menlo,Consolas,monospace';
@@ -16,11 +17,13 @@ export function DuelLobby({
   settings,
   onBack,
   onPlay,
+  onVsPc,
   onWins,
 }: {
   settings: DuelSettings;
   onBack: () => void;
   onPlay: (match: MatchView) => void;
+  onVsPc: () => void;
   onWins: () => void;
 }) {
   const [state, setState] = React.useState<DuelState | null>(null);
@@ -28,6 +31,7 @@ export function DuelLobby({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [copied, setCopied] = React.useState<string | null>(null);
+  const [waitedMs, setWaitedMs] = React.useState(0);
   const focus = React.useMemo(() => focusChallengeId(), []);
 
   const onPlayRef = React.useRef(onPlay);
@@ -55,6 +59,27 @@ export function DuelLobby({
       window.clearInterval(id);
     };
   }, [refresh]);
+
+  const waitingId = state?.outbox[0]?.id ?? '';
+  React.useEffect(() => {
+    setWaitedMs(0);
+    if (!waitingId) return;
+    const started = Date.now();
+    const id = window.setInterval(() => setWaitedMs(Date.now() - started), 1000);
+    return () => window.clearInterval(id);
+  }, [waitingId]);
+
+  async function playVsPc() {
+    setBusy(true);
+    setError(null);
+    try {
+      const pending = state?.outbox ?? [];
+      await Promise.all(pending.map((ch) => duelApi.cancel(ch.id).catch(() => undefined)));
+    } finally {
+      setBusy(false);
+      onVsPc();
+    }
+  }
 
   async function send() {
     setBusy(true);
@@ -108,6 +133,8 @@ export function DuelLobby({
 
   const inbox = state?.inbox ?? [];
   const outbox = state?.outbox ?? [];
+  const waiting = outbox[0] ?? null;
+  const nudge = waiting != null && pcWaitNudge(waitedMs);
 
   return (
     <div className="bitdrop-duel-overlay" data-testid="bitdrop-duel-overlay">
@@ -118,8 +145,13 @@ export function DuelLobby({
         </div>
         <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 13, color: '#c8c8ce', lineHeight: 1.45 }}>
           First to 3 rounds. You set the board: {settings.width}w · {settings.viruses} targets · speed {settings.speed}.
+          Challenge by username — they accept in this app. No text message.
           {state?.username ? ` Signed in as ${state.username}.` : ''}
         </div>
+
+        <button type="button" data-testid="play-vs-pc" disabled={busy} onClick={() => void playVsPc()} style={pcBtn}>
+          PLAY VS PC
+        </button>
 
         <div style={{ display: 'flex', gap: 8 }}>
           <input
@@ -148,6 +180,29 @@ export function DuelLobby({
         )}
 
         <div className="bitdrop-duel-scroll">
+          {waiting && (
+            <Card hot>
+              <div style={nameStyle}>WAITING FOR {waiting.opponent}</div>
+              <div style={metaStyle}>
+                They join from CHALLENGES FOR YOU on this post. You are P1 until they accept.
+                First to 3. Garbage attacks on. {waiting.width}w · {waiting.viruses} targets · speed {waiting.speed}.
+              </div>
+              {nudge && (
+                <div style={{ fontFamily: BODY, fontSize: 13, color: '#d9cf4a', lineHeight: 1.4 }}>
+                  No answer yet — play vs PC instead?
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" disabled={busy} onClick={() => void playVsPc()} style={pcBtn}>
+                  PLAY VS PC INSTEAD
+                </button>
+                <button type="button" disabled={busy} onClick={() => void pass(waiting.id, 'cancel')} style={ghostBtn}>
+                  CANCEL
+                </button>
+              </div>
+            </Card>
+          )}
+
           <Section title="CHALLENGES FOR YOU">
             {inbox.length === 0 && <Empty>none right now — they show up here when someone challenges you</Empty>}
             {inbox.map((ch) => (
@@ -212,6 +267,16 @@ function Card({ children, hot }: { children: React.ReactNode; hot?: boolean }) {
     </div>
   );
 }
+
+const pcBtn: React.CSSProperties = {
+  fontFamily: 'inherit',
+  fontSize: 10,
+  background: '#2f4bc9',
+  color: '#fff',
+  border: '3px solid #fff',
+  padding: '10px 12px',
+  cursor: 'pointer',
+};
 
 const goBtn: React.CSSProperties = {
   fontFamily: 'inherit',

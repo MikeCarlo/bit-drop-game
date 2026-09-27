@@ -15,6 +15,23 @@ The Reddit playtest build (`artifacts/devvit-bit-drop`) bakes `PLATFORM=reddit` 
 
 Solo high scores (`bitdrop:board` / `HighScoreBoard`) are unchanged. Duel rounds are not written there.
 
+## Waiting room
+
+This is the Reddit stand-in for the live site’s friend lobby (room code or “send this link by text”). There is no SMS and no WebRTC room.
+
+1. P1 opens **1v1 DUEL** and types a Reddit username. Width, targets, and speed are P1’s menu sliders.
+2. Send stores a pending challenge. P1 stays in the lobby on **WAITING FOR {name}** until P2 taps **ACCEPT** under **CHALLENGES FOR YOU** (same post). A copy link is optional; the in-app list is the invite.
+3. While that card is up, **PLAY VS PC INSTEAD** is on it. After **45 seconds** with no accept, the card also says “No answer yet — play vs PC instead?” Switching to the PC cancels the outgoing challenge so P2 does not walk into an empty match.
+4. Accept starts the human match. P1 is seat 0. First to 3. Garbage on. The opponent mini-map from the live site is still not shown.
+
+## Play vs PC
+
+**PLAY VS PC** is on the Reddit menu and on the duel screen (always, not only after the wait). It uses the same sliders, first to 3, and garbage colors.
+
+The PC is a local heuristic (`src/duel/botBoard.ts`). Each pill it hard-drops the placement that clears the most targets, then sends attacks, then stays low. It is not a perfect player. Faster speed settings make it drop more often.
+
+PC matches never call `/api/duel/*`. They are not written to `bitdrop:duel:wins:YYYY-MM`. The match-over screen says PC games stay off that board. Quitting a PC game returns to the menu and does not credit anyone.
+
 ## What we did not use
 
 | Idea | What happened |
@@ -77,3 +94,4 @@ All routes are under `/api/duel` and take the player from `reddit.getCurrentUser
 | Client API | `artifacts/claude-design/src/duel/` |
 | Lobby, between-rounds, wins | `src/ui/DuelLobby.tsx`, `DuelMatch.tsx`, `DuelWinsBoard.tsx` |
 | Boards and garbage | `App.tsx` (`duelLive`, `noteClearRun`, `planGarbage`) |
+| Play vs PC | `src/duel/botBoard.ts`, `src/duel/pcMatch.ts` — local only, not the monthly board |

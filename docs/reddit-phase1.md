@@ -4,7 +4,7 @@ Website vs Reddit inventory, scoring rules, and gap list: [website-vs-reddit-par
 
 Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published).
 
-Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). They use the Devvit server, not SMS. The web app’s text-link friend duel stays on the live site.
+Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). They use the Devvit server, not SMS. The web app’s text-link friend duel stays on the live site. **PLAY VS PC** is a local opponent on that same Reddit UI; those games are not on the monthly board.
 
 ## What already existed
 

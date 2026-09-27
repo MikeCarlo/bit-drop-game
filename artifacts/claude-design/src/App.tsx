@@ -2,7 +2,9 @@ import React from 'react';
 import LearnPage from './LearnPage';
 import { duelApi, DuelRequestError, subscribeDuel } from './duel/api';
 import { noteClearRun } from './duel/attack';
+import { BotBoard } from './duel/botBoard';
 import { planGarbage, shuffleColumns, type GarbageDrop } from './duel/garbage';
+import { buildPcView, isPcMatch, settlePcRound } from './duel/pcMatch';
 import type { MatchView, WinsRow } from './duel/types';
 import { FLAGS, playModeLabel } from './flags';
 import { redditDuelEnabled } from './modes';
@@ -73,6 +75,7 @@ interface State {
   scoresBack: OverlayScreen;
   incomingCount: number;
   duelMatch: MatchView | null;
+  pcLeft: number;
   duelError: string | null;
   duelBusy: boolean;
   duelWins: WinsRow[];
@@ -101,6 +104,7 @@ export default class App extends React.Component<object, State> {
     duelWins: [],
     duelMonth: '',
     duelYou: '',
+    pcLeft: 0,
   };
 
   store = createLeaderboardStore();
@@ -135,6 +139,12 @@ export default class App extends React.Component<object, State> {
   clearRunColors: number[] = [];
   duelTimer = 0;
   duelUnsub: () => void = () => {};
+  /** Local Play vs PC. Never posts a round or a monthly win. */
+  pcMode = false;
+  pcBot: BotBoard | null = null;
+  pcTimer = 0;
+  pcWins: [number, number] = [0, 0];
+  pcRoundClosed = false;
   particles: Particle[] = [];
   dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
@@ -328,6 +338,7 @@ export default class App extends React.Component<object, State> {
     if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
     this.unbindPlayInput();
     this.stopDuelSync();
+    this.stopPcBot();
   }
 
   // ── audio ──────────────────────────────────────────────────────────────
@@ -401,6 +412,7 @@ export default class App extends React.Component<object, State> {
     this.spawn();
     this.lastFall = performance.now();
     this.beep(523, 0.06);
+    if (this.pcMode) this.armPcBot();
   }
 
   // ── tutorial ────────────────────────────────────────────────────────────
@@ -801,6 +813,24 @@ export default class App extends React.Component<object, State> {
     this.setState({ screen: 'duel', duelError: null, paused: false });
   }
 
+  /** Local opponent. Same board sliders, first to 3, garbage. No server credit. */
+  startPcDuel() {
+    if (!redditDuelEnabled()) return;
+    this.stopDuelSync();
+    this.pcMode = true;
+    this.pcWins = [0, 0];
+    this.pcRoundClosed = false;
+    const view = buildPcView({
+      settings: { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed },
+      wins: [0, 0],
+      round: 1,
+      phase: 'playing',
+      roundWinner: null,
+      winner: null,
+    });
+    this.beginDuelRound(view);
+  }
+
   async openDuelWins() {
     this.setState({ screen: 'duelwins' });
     try {
@@ -844,6 +874,7 @@ export default class App extends React.Component<object, State> {
   }
 
   ingestDuel(view: MatchView) {
+    if (this.pcMode || view.id === 'pc-local') return;
     this.duelMatchId = view.id;
     this.setState({ duelMatch: view, duelYou: view.you });
     this.startDuelSync(view.postId);
@@ -882,6 +913,78 @@ export default class App extends React.Component<object, State> {
     this.fastDrop = false;
   }
 
+  armPcBot() {
+    this.stopPcBot();
+    this.pcBot = new BotBoard({
+      cols: this.cols,
+      rows: this.rows,
+      viruses: this.state.viruses,
+    });
+    this.setState({ pcLeft: this.pcBot.targetsLeft });
+    const pace = Math.max(320, 1200 - this.state.speed * 100);
+    this.pcTimer = window.setInterval(() => this.tickPcBot(), pace);
+  }
+
+  stopPcBot() {
+    if (this.pcTimer) window.clearInterval(this.pcTimer);
+    this.pcTimer = 0;
+    this.pcBot = null;
+  }
+
+  tickPcBot() {
+    if (!this.pcMode || !this.duelLive || !this.pcBot || this.state.paused || this.state.screen !== 'play') return;
+    const events = this.pcBot.playPill();
+    const left = this.pcBot?.targetsLeft ?? 0;
+    if (left !== this.state.pcLeft) this.setState({ pcLeft: left });
+    for (const ev of events) {
+      if (ev.type === 'attack') this.receivePcAttack(ev.colors);
+      else this.settlePc(ev.outcome === 'lose');
+    }
+  }
+
+  receivePcAttack(colors: number[]) {
+    const match = this.state.duelMatch;
+    if (!this.duelLive || !this.pcMode || !match) return;
+    const id = `pc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    this.enqueueGarbage({
+      ...match,
+      attacks: [{ id, colors }],
+      attackIds: [id],
+      garbage: colors,
+    });
+  }
+
+  settlePc(playerWon: boolean) {
+    if (!this.pcMode || this.pcRoundClosed) return;
+    this.pcRoundClosed = true;
+    this.stopPcBot();
+    this.haltDuelBoard();
+    const settled = settlePcRound(this.pcWins, playerWon);
+    this.pcWins = settled.wins;
+    const match = this.state.duelMatch;
+    const view = buildPcView({
+      settings: {
+        width: match?.width ?? this.state.width,
+        viruses: match?.viruses ?? this.state.viruses,
+        speed: match?.speed ?? this.state.speed,
+      },
+      wins: settled.wins,
+      round: this.duelRoundRunning,
+      phase: settled.phase,
+      roundWinner: settled.roundWinner,
+      winner: settled.winner,
+    });
+    this.setState({
+      screen: 'duel',
+      duelMatch: view,
+      duelBusy: false,
+      duelError: null,
+      paused: false,
+      incomingCount: 0,
+      pcLeft: 0,
+    });
+  }
+
   beginDuelRound(match: MatchView) {
     if (!this.savedSolo) {
       this.savedSolo = { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed };
@@ -895,7 +998,8 @@ export default class App extends React.Component<object, State> {
     this.incomingDrops = [];
     this.incomingFlashUntil = 0;
     this.appliedAttackIds.clear();
-    this.startDuelSync(match.postId);
+    if (this.pcMode) this.stopDuelSync();
+    else this.startDuelSync(match.postId);
     this.setState({
       width: match.width,
       viruses: match.viruses,
@@ -928,10 +1032,14 @@ export default class App extends React.Component<object, State> {
       if (this.phase === 'idle') this.phase = 'incoming-warning';
       this.setState({ incomingCount: this.incomingBlocks.length + this.incomingDrops.length });
     }
-    void duelApi.ack(view.id, ids).catch(() => {});
+    if (!this.pcMode) void duelApi.ack(view.id, ids).catch(() => {});
   }
 
   duelSendAttack(colors: number[]) {
+    if (this.pcMode) {
+      this.pcBot?.queueGarbage(colors);
+      return;
+    }
     const id = this.duelMatchId;
     if (!id || !this.duelLive) return;
     const attackId = `${this.duelRoundRunning}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -989,6 +1097,10 @@ export default class App extends React.Component<object, State> {
   }
 
   async finishDuelRound(won: boolean) {
+    if (this.pcMode) {
+      this.settlePc(won);
+      return;
+    }
     const id = this.duelMatchId;
     const round = this.duelRoundRunning;
     if (!id) return;
@@ -1014,6 +1126,24 @@ export default class App extends React.Component<object, State> {
   }
 
   async readyDuel() {
+    if (this.pcMode) {
+      if (this.pcWins[0] >= 3 || this.pcWins[1] >= 3) return;
+      this.pcRoundClosed = false;
+      const match = this.state.duelMatch;
+      this.beginDuelRound(buildPcView({
+        settings: {
+          width: match?.width ?? this.state.width,
+          viruses: match?.viruses ?? this.state.viruses,
+          speed: match?.speed ?? this.state.speed,
+        },
+        wins: this.pcWins,
+        round: this.duelRoundRunning + 1,
+        phase: 'playing',
+        roundWinner: null,
+        winner: null,
+      }));
+      return;
+    }
     if (!this.duelMatchId) return;
     this.setState({ duelBusy: true, duelError: null });
     try {
@@ -1029,6 +1159,10 @@ export default class App extends React.Component<object, State> {
   }
 
   async forfeitDuel() {
+    if (this.pcMode) {
+      this.leaveDuel();
+      return;
+    }
     if (!this.duelMatchId) return;
     this.haltDuelBoard();
     this.reportedRound = 0;
@@ -1047,6 +1181,10 @@ export default class App extends React.Component<object, State> {
 
   leaveDuel() {
     this.stopDuelSync();
+    this.stopPcBot();
+    this.pcMode = false;
+    this.pcWins = [0, 0];
+    this.pcRoundClosed = false;
     this.haltDuelBoard();
     this.duelMatchId = null;
     this.duelRoundRunning = 0;
@@ -1060,6 +1198,7 @@ export default class App extends React.Component<object, State> {
       duelError: null,
       paused: false,
       incomingCount: 0,
+      pcLeft: 0,
       width: solo?.width ?? this.state.width,
       viruses: solo?.viruses ?? this.state.viruses,
       speed: solo?.speed ?? this.state.speed,
@@ -1472,8 +1611,9 @@ export default class App extends React.Component<object, State> {
           <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>
             targets {s.left}
             {s.duelMatch && (isPlaying || s.screen === 'duel')
-              ? ` · ${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
+              ? ` · ${isPcMatch(s.duelMatch) ? 'VS PC ' : ''}${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
               : ''}
+            {isPcMatch(s.duelMatch) && s.pcLeft > 0 ? ` · PC ${s.pcLeft}` : ''}
             {s.incomingCount > 0 ? ` · IN ${s.incomingCount}` : ''}
           </div>
           {isPlaying && (
@@ -1570,6 +1710,12 @@ export default class App extends React.Component<object, State> {
                     </div>
                   )}
 
+                  {redditDuelEnabled() && (
+                    <button className="bitdrop-btn bitdrop-btn-pc" onClick={() => this.startPcDuel()}>
+                      PLAY VS PC
+                    </button>
+                  )}
+
                   {!redditDuelEnabled() && <CompeteStub />}
                 </div>
 
@@ -1598,6 +1744,7 @@ export default class App extends React.Component<object, State> {
                 match={s.duelMatch}
                 error={s.duelError}
                 busy={s.duelBusy}
+                vsPc={isPcMatch(s.duelMatch)}
                 onReady={() => { void this.readyDuel(); }}
                 onForfeit={() => { void this.forfeitDuel(); }}
                 onMenu={() => this.leaveDuel()}
@@ -1608,6 +1755,7 @@ export default class App extends React.Component<object, State> {
                 settings={{ width: s.width, viruses: s.viruses, speed: s.speed }}
                 onBack={() => this.setState({ screen: 'menu' })}
                 onPlay={(match) => this.joinDuel(match)}
+                onVsPc={() => this.startPcDuel()}
                 onWins={() => { void this.openDuelWins(); }}
               />
             )
@@ -1682,11 +1830,12 @@ export default class App extends React.Component<object, State> {
                   RESUME
                 </button>
                 <button onClick={() => {
-                  if (this.duelMatchId) void this.forfeitDuel();
+                  if (this.pcMode) this.leaveDuel();
+                  else if (this.duelMatchId) void this.forfeitDuel();
                   else { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }
                 }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
-                  {this.duelMatchId ? 'FORFEIT' : 'QUIT'}
+                  {this.pcMode ? 'QUIT' : this.duelMatchId ? 'FORFEIT' : 'QUIT'}
                 </button>
               </div>
             </div>

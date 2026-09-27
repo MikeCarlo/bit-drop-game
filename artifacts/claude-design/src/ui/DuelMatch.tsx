@@ -9,6 +9,7 @@ export function DuelMatch({
   match,
   error,
   busy,
+  vsPc = false,
   onReady,
   onForfeit,
   onMenu,
@@ -17,6 +18,7 @@ export function DuelMatch({
   match: MatchView;
   error: string | null;
   busy: boolean;
+  vsPc?: boolean;
   onReady: () => void;
   onForfeit: () => void;
   onMenu: () => void;
@@ -27,7 +29,7 @@ export function DuelMatch({
   const youWonMatch = match.winner != null && match.winner.toLowerCase() === match.you.toLowerCase();
 
   React.useEffect(() => {
-    if (match.phase !== 'complete') return;
+    if (vsPc || match.phase !== 'complete') return;
     let stop = false;
     void duelApi.wins().then((board) => {
       if (!stop) setWins(board);
@@ -37,7 +39,7 @@ export function DuelMatch({
     return () => {
       stop = true;
     };
-  }, [match.phase, match.id, match.winner]);
+  }, [vsPc, match.phase, match.id, match.winner]);
 
   const title =
     match.phase === 'complete'
@@ -67,11 +69,19 @@ export function DuelMatch({
         {onRetry && error && match.phase === 'playing' && (
           <button type="button" disabled={busy} onClick={onRetry} style={goBtn}>RETRY RESULT</button>
         )}
-        {match.phase === 'complete' && wins && (
+        {match.phase === 'complete' && !vsPc && wins && (
           <DuelWinsBoard month={wins.month} rows={wins.rows} you={match.you} compact />
         )}
-        {match.phase !== 'complete' && (
+        {match.phase === 'complete' && vsPc && (
+          <div style={{ fontFamily: BODY, fontSize: 12, color: '#9a9aa0', lineHeight: 1.45 }}>
+            PC games stay off the monthly wins board.
+          </div>
+        )}
+        {match.phase !== 'complete' && !vsPc && (
           <button type="button" disabled={busy} onClick={onForfeit} style={ghostBtn}>FORFEIT</button>
+        )}
+        {match.phase !== 'complete' && vsPc && (
+          <button type="button" onClick={onMenu} style={ghostBtn}>QUIT</button>
         )}
         {match.phase === 'complete' && (
           <button type="button" onClick={onMenu} style={ghostBtn}>MENU</button>

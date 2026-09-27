@@ -391,6 +391,14 @@ input[type=range]::-moz-range-thumb {
   padding: clamp(6px, 1.3cqh, 12px);
 }
 
+.bitdrop-btn-pc {
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #2f4bc9;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
 /* Win / lose: fit the panel; no overlay scrollbar. */
 .bitdrop-end-overlay {
   position: absolute;
