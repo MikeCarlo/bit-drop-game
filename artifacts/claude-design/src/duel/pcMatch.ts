@@ -15,6 +15,17 @@ export function isBotCreditId(id: string): boolean {
   return /^bot-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
+/** Uniform 1 (easy) through 10 (hard). One roll per bot match. `rand` is in [0, 1]. */
+export function rollBotSkill(rand: () => number = Math.random): number {
+  const n = 1 + Math.floor(rand() * 10);
+  return Math.max(1, Math.min(10, n));
+}
+
+export function botSkillLabel(skill: number): string {
+  const n = Math.max(1, Math.min(10, Math.round(skill)));
+  return `BOT · SKILL ${n}`;
+}
+
 /** How long P1 waits in the challenge room before we nudge Play vs PC. */
 export const PC_WAIT_MS = 45_000;
 

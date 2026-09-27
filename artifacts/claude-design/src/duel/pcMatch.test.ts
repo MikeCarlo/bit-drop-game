@@ -4,12 +4,26 @@ import {
   PC_NAME,
   PC_WAIT_MS,
   PC_WINS_TO_TAKE,
+  botSkillLabel,
   buildPcView,
   formatWait,
   isPcMatch,
   pcWaitNudge,
+  rollBotSkill,
   settlePcRound,
 } from './pcMatch.ts';
+
+test('bot skill is a uniform roll from 1 to 10', () => {
+  assert.equal(rollBotSkill(() => 0), 1);
+  assert.equal(rollBotSkill(() => 0.999), 10);
+  assert.equal(rollBotSkill(() => 1), 10);
+  const seen = new Set<number>();
+  for (let i = 0; i < 10; i++) seen.add(rollBotSkill(() => i / 10));
+  assert.deepEqual([...seen].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(botSkillLabel(7), 'BOT · SKILL 7');
+  assert.equal(botSkillLabel(0), 'BOT · SKILL 1');
+  assert.equal(botSkillLabel(12), 'BOT · SKILL 10');
+});
 
 test('lobby timer prints elapsed minutes and seconds', () => {
   assert.equal(formatWait(0), '0:00');

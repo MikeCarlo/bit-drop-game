@@ -2,9 +2,9 @@ import React from 'react';
 import LearnPage from './LearnPage';
 import { duelApi, DuelRequestError, subscribeDuel } from './duel/api';
 import { noteClearRun } from './duel/attack';
-import { BotBoard } from './duel/botBoard';
+import { BotBoard, botPaceMs } from './duel/botBoard';
 import { planGarbage, shuffleColumns, type GarbageDrop } from './duel/garbage';
-import { buildPcView, isPcMatch, newBotMatchId, settlePcRound } from './duel/pcMatch';
+import { botSkillLabel, buildPcView, isPcMatch, newBotMatchId, rollBotSkill, settlePcRound } from './duel/pcMatch';
 import type { MatchView, WinsRow } from './duel/types';
 import { FLAGS, playModeLabel } from './flags';
 import { redditDuelEnabled } from './modes';
@@ -83,6 +83,8 @@ interface State {
   duelYou: string;
   duelBoard: 'human' | 'bot';
   duelWinsBack: 'duel' | 'scores';
+  /** 1–10 for the current bot match. 0 when there is no bot. */
+  pcSkill: number;
 }
 
 // ── game component ─────────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ export default class App extends React.Component<object, State> {
     duelBoard: 'human',
     duelWinsBack: 'duel',
     pcLeft: 0,
+    pcSkill: 0,
   };
 
   store = createLeaderboardStore();
@@ -150,6 +153,8 @@ export default class App extends React.Component<object, State> {
   pcWins: [number, number] = [0, 0];
   pcRoundClosed = false;
   pcCreditId = '';
+  /** One roll for the whole first-to-3. Not rerolled between rounds. */
+  pcSkill = 0;
   particles: Particle[] = [];
   dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
@@ -826,6 +831,8 @@ export default class App extends React.Component<object, State> {
     this.pcWins = [0, 0];
     this.pcRoundClosed = false;
     this.pcCreditId = newBotMatchId();
+    this.pcSkill = rollBotSkill();
+    this.setState({ pcSkill: this.pcSkill });
     const view = buildPcView({
       id: this.pcCreditId,
       settings: { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed },
@@ -922,14 +929,15 @@ export default class App extends React.Component<object, State> {
 
   armPcBot() {
     this.stopPcBot();
+    const skill = this.pcSkill || 10;
     this.pcBot = new BotBoard({
       cols: this.cols,
       rows: this.rows,
       viruses: this.state.viruses,
+      skill,
     });
-    this.setState({ pcLeft: this.pcBot.targetsLeft });
-    const pace = Math.max(320, 1200 - this.state.speed * 100);
-    this.pcTimer = window.setInterval(() => this.tickPcBot(), pace);
+    this.setState({ pcLeft: this.pcBot.targetsLeft, pcSkill: skill });
+    this.pcTimer = window.setInterval(() => this.tickPcBot(), botPaceMs(skill, this.state.speed));
   }
 
   stopPcBot() {
@@ -1195,6 +1203,7 @@ export default class App extends React.Component<object, State> {
     this.pcWins = [0, 0];
     this.pcRoundClosed = false;
     this.pcCreditId = '';
+    this.pcSkill = 0;
     this.haltDuelBoard();
     this.duelMatchId = null;
     this.duelRoundRunning = 0;
@@ -1209,6 +1218,7 @@ export default class App extends React.Component<object, State> {
       paused: false,
       incomingCount: 0,
       pcLeft: 0,
+      pcSkill: 0,
       width: solo?.width ?? this.state.width,
       viruses: solo?.viruses ?? this.state.viruses,
       speed: solo?.speed ?? this.state.speed,
@@ -1618,13 +1628,18 @@ export default class App extends React.Component<object, State> {
         {/* Header */}
         <div className="bitdrop-chrome-header">
           <div style={{ fontSize: 13, lineHeight: 1 }}>score: {s.score}</div>
-          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>
-            targets {s.left}
-            {s.duelMatch && (isPlaying || s.screen === 'duel')
-              ? ` · ${isPcMatch(s.duelMatch) ? 'VS PC ' : ''}${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
-              : ''}
-            {isPcMatch(s.duelMatch) && s.pcLeft > 0 ? ` · PC ${s.pcLeft}` : ''}
-            {s.incomingCount > 0 ? ` · IN ${s.incomingCount}` : ''}
+          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1.35, textAlign: 'center' }}>
+            {isPcMatch(s.duelMatch) && s.pcSkill > 0 && (
+              <div data-testid="bot-skill" style={{ fontSize: 11, color: '#ffffff', letterSpacing: 0.4 }}>{botSkillLabel(s.pcSkill)}</div>
+            )}
+            <div>
+              targets {s.left}
+              {s.duelMatch && (isPlaying || s.screen === 'duel')
+                ? ` · ${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
+                : ''}
+              {isPcMatch(s.duelMatch) && s.pcLeft > 0 ? ` · PC ${s.pcLeft}` : ''}
+              {s.incomingCount > 0 ? ` · IN ${s.incomingCount}` : ''}
+            </div>
           </div>
           {isPlaying && (
             <button onClick={() => this.setState({ paused: !s.paused })} style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#ffffff', border: '2px solid #6e6e72', padding: '7px 11px', cursor: 'pointer' }}>
@@ -1749,6 +1764,7 @@ export default class App extends React.Component<object, State> {
                 error={s.duelError}
                 busy={s.duelBusy}
                 vsPc={isPcMatch(s.duelMatch)}
+                botSkill={s.pcSkill}
                 onReady={() => { void this.readyDuel(); }}
                 onForfeit={() => { void this.forfeitDuel(); }}
                 onMenu={() => this.leaveDuel()}

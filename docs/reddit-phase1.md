@@ -4,7 +4,7 @@ Website vs Reddit inventory, scoring rules, and gap list: [website-vs-reddit-par
 
 Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published).
 
-Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). **Find a challenger** joins a Devvit Redis queue. **START NOW** on that lobby plays a local bot. A win there counts on the monthly **bot board** only, not the human duel board. The web app’s text-link friend duel stays on the live site. There is no SMS.
+Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). **Find a challenger** joins a Devvit Redis queue. **START NOW** on that lobby plays a local bot at a random skill from 1 (easy) to 10 (hard), shown as **BOT · SKILL N**. A win there counts on the monthly **bot board** only, not the human duel board. The web app’s text-link friend duel stays on the live site. There is no SMS.
 
 ## What already existed
 

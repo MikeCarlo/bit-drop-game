@@ -25,6 +25,9 @@ test('reddit duel UI does not invite by SMS', () => {
   assert.match(lobby, /MONTHLY DUEL WINS/);
   assert.match(match, /bot board only/);
   assert.match(app, /recordBotWin|botWins/);
+  assert.match(app, /rollBotSkill\(\)/);
+  assert.match(app, /data-testid="bot-skill"/);
+  assert.match(match, /data-testid="bot-skill"/);
   assert.doesNotMatch(app, /duelApi\.wins\([\s\S]{0,40}pcMode/);
   assert.match(app, /redditDuelEnabled\(\)/);
   assert.match(app, /pcMode/);

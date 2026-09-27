@@ -1,6 +1,6 @@
 import React from 'react';
 import { duelApi, DuelRequestError } from '../duel/api';
-import { isBotCreditId } from '../duel/pcMatch';
+import { botSkillLabel, isBotCreditId } from '../duel/pcMatch';
 import type { MatchView, WinsBoard } from '../duel/types';
 import { DuelWinsBoard } from './DuelWinsBoard';
 
@@ -11,6 +11,7 @@ export function DuelMatch({
   error,
   busy,
   vsPc = false,
+  botSkill = 0,
   onReady,
   onForfeit,
   onMenu,
@@ -20,6 +21,8 @@ export function DuelMatch({
   error: string | null;
   busy: boolean;
   vsPc?: boolean;
+  /** Rolled once for this bot match. 0 hides the label. */
+  botSkill?: number;
   onReady: () => void;
   onForfeit: () => void;
   onMenu: () => void;
@@ -76,6 +79,9 @@ export function DuelMatch({
         <div style={{ fontFamily: BODY, fontWeight: 700, fontSize: 16, color: '#fff' }}>
           {match.p1} {match.wins[0]} — {match.wins[1]} {match.p2}
         </div>
+        {vsPc && botSkill > 0 && (
+          <div data-testid="bot-skill" style={{ fontSize: 13, color: '#d9cf4a', letterSpacing: 0.6 }}>{botSkillLabel(botSkill)}</div>
+        )}
         <div style={{ fontFamily: BODY, fontSize: 13, color: '#9a9aa0', lineHeight: 1.5 }}>
           First to 3 · round {match.round}
           {match.phase === 'between' && !match.youReady && ' · tap next when you are ready'}

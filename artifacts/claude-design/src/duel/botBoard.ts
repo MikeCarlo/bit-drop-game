@@ -23,8 +23,36 @@ export type BotHooks = {
   cols: number;
   rows: number;
   viruses: number;
+  /** 1 = easy, 10 = hard. Defaults to 10 so a caller that omits it still plays the full search. */
+  skill?: number;
   rand?: () => number;
 };
+
+export function clampBotSkill(skill: number): number {
+  if (!Number.isFinite(skill)) return 1;
+  return Math.max(1, Math.min(10, Math.round(skill)));
+}
+
+function skillT(skill: number): number {
+  return (clampBotSkill(skill) - 1) / 9;
+}
+
+/** How often the bot ignores the best placement. Skill 1 is about 3 in 4. Skill 10 is rare. */
+export function botMistakeRate(skill: number): number {
+  return 0.75 - skillT(skill) * 0.73;
+}
+
+/** How often a clear is actually sent as garbage. Skill 1 is occasional. Skill 10 always sends. */
+export function botAttackRate(skill: number): number {
+  return 0.2 + skillT(skill) * 0.8;
+}
+
+/** Milliseconds between bot pills. Skill sets the pace. Board speed only nudges it. */
+export function botPaceMs(skill: number, boardSpeed: number): number {
+  const speed = Math.max(1, Math.min(9, Math.round(boardSpeed) || 1));
+  const base = 1800 - skillT(skill) * 1520;
+  return Math.round(Math.max(240, base - (speed - 1) * 30));
+}
 
 function cloneGrid(grid: BotGrid): BotGrid {
   return grid.map((row) => row.map((cell) => (cell ? { c: cell.c, t: cell.t } : null)));
@@ -190,12 +218,14 @@ export class BotBoard {
   grid: BotGrid;
   targetsLeft: number;
   alive = true;
+  readonly skill: number;
   private garbage: number[] = [];
   private readonly rand: () => number;
 
   constructor(opts: BotHooks) {
     this.cols = opts.cols;
     this.rows = opts.rows;
+    this.skill = clampBotSkill(opts.skill ?? 10);
     this.rand = opts.rand ?? Math.random;
     this.grid = Array.from({ length: opts.rows }, () => Array(opts.cols).fill(null));
     this.targetsLeft = this.placeTargets(opts.viruses);
@@ -240,7 +270,9 @@ export class BotBoard {
   private finishResolve(): BotEvent[] {
     const events: BotEvent[] = [];
     const resolved = resolveBoard(this.grid);
-    if (resolved.colors.length) events.push({ type: 'attack', colors: resolved.colors });
+    if (resolved.colors.length && this.rand() < botAttackRate(this.skill)) {
+      events.push({ type: 'attack', colors: resolved.colors });
+    }
     this.targetsLeft = Math.max(0, this.targetsLeft - resolved.targetsCleared);
     if (this.targetsLeft <= 0) {
       this.alive = false;
@@ -255,29 +287,36 @@ export class BotBoard {
   }
 
   private bestMove(a: number, b: number): Pill | null {
-    let best: Pill | null = null;
-    let bestScore = -Infinity;
-    for (let dir = 0; dir < 4; dir++) {
-      for (let x = 0; x < this.cols; x++) {
+    const ranked: { pill: Pill; score: number }[] = [];
+    const dirs = this.skill >= 7 ? [0, 1, 2, 3] : this.skill >= 4 ? [0, 1, 2] : [0, 2];
+    const step = this.skill >= 8 ? 1 : this.skill >= 4 ? 1 : 2;
+    for (const dir of dirs) {
+      for (let x = 0; x < this.cols; x += step) {
         const dropped = dropPill(this.grid, dir, x, a, b);
         if (!dropped) continue;
         const copy = cloneGrid(this.grid);
         lockPill(copy, dropped);
         const resolved = resolveBoard(copy);
         const pile = pileStats(copy);
-        const score = scoreBotPlacement({
-          targetsCleared: resolved.targetsCleared,
-          attacks: resolved.colors.length,
-          holes: pile.holes,
-          height: pile.height,
+        ranked.push({
+          pill: dropped,
+          score: scoreBotPlacement({
+            targetsCleared: resolved.targetsCleared,
+            attacks: resolved.colors.length,
+            holes: pile.holes,
+            height: pile.height,
+          }),
         });
-        if (score > bestScore) {
-          bestScore = score;
-          best = dropped;
-        }
       }
     }
-    return best;
+    if (!ranked.length) return null;
+    ranked.sort((p, q) => q.score - p.score);
+    const best = ranked[0]!;
+    if (ranked.length > 1 && this.rand() < botMistakeRate(this.skill)) {
+      const worse = ranked.slice(1);
+      return worse[Math.floor(this.rand() * worse.length)]!.pill;
+    }
+    return best.pill;
   }
 
   private placeTargets(want: number): number {

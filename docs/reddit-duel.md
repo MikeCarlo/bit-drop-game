@@ -28,7 +28,16 @@ This replaces the live site’s friend lobby (room code or “send this link by 
 
 **START NOW** is the bot path. It is not a second menu item and it does not stay in the human queue.
 
-The PC is a local heuristic (`src/duel/botBoard.ts`). Each pill it hard-drops the placement that clears the most targets, then sends attacks, then stays low. It is not a perfect player. Faster speed settings make it drop more often.
+The PC is a local heuristic (`src/duel/botBoard.ts`). **START NOW** rolls one skill, uniformly from **1** (super easy) to **10** (hard to beat). That number lasts for the whole first-to-3. It is not rolled again on the next round. The play header and the between-rounds screen show it as **BOT · SKILL 7**.
+
+| Skill | What the player feels |
+| --- | --- |
+| 1 | Slow pills, bad placements most of the time, garbage only now and then, and a narrow search (two rotations, every other column). A new player can win. |
+| 10 | Fast pills, the best placement almost every time, every colored clear sent as garbage, and a full search of columns and rotations. |
+
+What scales with skill: reaction delay, mistake rate, how often a clear becomes garbage, and how wide the placement search is. Board speed only nudges the delay. Skill 1 waits about 1.8s between pills. Skill 10 waits about a quarter of a second.
+
+The bot board stores wins only. It does not store the skill that was faced.
 
 A win against the PC calls `POST /api/duel/bot-win` once, with a `bot-<uuid>` match id. That increments **only** `bitdrop:duel:botwins:YYYY-MM`. It does not call the human round route and it does not touch `bitdrop:duel:wins:YYYY-MM`. A loss to the PC increments neither board. Quitting back to the menu does not credit anyone. The match-over screen says the win is on the bot board only.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BotBoard, resolveBoard, scoreBotPlacement } from './botBoard.ts';
+import { BotBoard, botAttackRate, botMistakeRate, botPaceMs, resolveBoard, scoreBotPlacement } from './botBoard.ts';
 
 test('placement score prefers clearing a target over a tall pile', () => {
   const clear = scoreBotPlacement({ targetsCleared: 1, attacks: 1, holes: 0, height: 4 });
@@ -30,6 +30,43 @@ test('garbage with no landing cell loses the round', () => {
   bot.queueGarbage([0]);
   const events = bot.playPill();
   assert.deepEqual(events, [{ type: 'round', outcome: 'lose' }]);
+});
+
+test('skill 1 is slow and sloppy; skill 10 is fast and sends every clear', () => {
+  assert.equal(botMistakeRate(1), 0.75);
+  assert.ok(botMistakeRate(10) < 0.03);
+  assert.equal(botAttackRate(1), 0.2);
+  assert.equal(botAttackRate(10), 1);
+  assert.ok(botPaceMs(1, 1) > botPaceMs(10, 1));
+  assert.equal(botPaceMs(1, 1), 1800);
+  assert.equal(botPaceMs(10, 9), 240);
+
+  const seq = [0.5, 0.5, 0.5, 0.5, 0.9, 0.5];
+  const scripted = () => seq.shift() ?? 0.5;
+  const easy = new BotBoard({ cols: 8, rows: 12, viruses: 0, skill: 1, rand: scripted });
+  easy.grid[11]![1] = { c: 2, t: true };
+  easy.grid[11]![2] = { c: 2, t: false };
+  easy.grid[11]![3] = { c: 2, t: false };
+  easy.targetsLeft = 1;
+  const easyEvents = easy.playPill();
+  assert.equal(easyEvents.some((e) => e.type === 'attack'), false);
+  assert.deepEqual(easyEvents.find((e) => e.type === 'round'), { type: 'round', outcome: 'win' });
+
+  const seqHard = [0.5, 0.5, 0.5, 0.5, 0.9, 0.5];
+  const hard = new BotBoard({
+    cols: 8,
+    rows: 12,
+    viruses: 0,
+    skill: 10,
+    rand: () => seqHard.shift() ?? 0.5,
+  });
+  hard.grid[11]![1] = { c: 2, t: true };
+  hard.grid[11]![2] = { c: 2, t: false };
+  hard.grid[11]![3] = { c: 2, t: false };
+  hard.targetsLeft = 1;
+  const hardEvents = hard.playPill();
+  const attack = hardEvents.find((e) => e.type === 'attack');
+  assert.ok(attack && attack.type === 'attack' && attack.colors.includes(2));
 });
 
 test('resolveBoard clears a horizontal 4 and reports the color', () => {
