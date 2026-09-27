@@ -13,7 +13,7 @@ const FLAG_KEYS = ['PLATFORM', 'ENABLE_MULTIPLAYER', 'ENABLE_LEADERBOARD'] as co
 function hoistRedditFlags(env: Record<string, string>) {
   const defaults: Record<(typeof FLAG_KEYS)[number], string> = {
     PLATFORM: 'reddit',
-    ENABLE_MULTIPLAYER: 'false',
+    ENABLE_MULTIPLAYER: 'true',
     ENABLE_LEADERBOARD: 'true',
   };
   for (const key of FLAG_KEYS) {
@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
           define: {
             'import.meta.env.VITE_PLATFORM': JSON.stringify(process.env.VITE_PLATFORM ?? 'reddit'),
             'import.meta.env.VITE_ENABLE_MULTIPLAYER': JSON.stringify(
-              process.env.VITE_ENABLE_MULTIPLAYER ?? 'false',
+              process.env.VITE_ENABLE_MULTIPLAYER ?? 'true',
             ),
             'import.meta.env.VITE_ENABLE_LEADERBOARD': JSON.stringify(
               process.env.VITE_ENABLE_LEADERBOARD ?? 'true',

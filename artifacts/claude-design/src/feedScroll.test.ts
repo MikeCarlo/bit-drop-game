@@ -30,10 +30,10 @@ test('shared App no longer ships a rotate-device blocker', () => {
   assert.match(app, /shouldCapturePlayGestures/);
 });
 
-test('brand gutters are blocks-only (no pills, no copy)', () => {
+test('brand gutters are blocks-only (no copy)', () => {
   const svg = brandGutterSvg();
   for (const color of BRAND_FILL) assert.match(svg, new RegExp(color, 'i'));
   assert.doesNotMatch(svg, /<text/i);
-  assert.doesNotMatch(svg, /BIT|DROP|pill/i);
+  assert.doesNotMatch(svg, /BIT|DROP/i);
   assert.doesNotMatch(svg, /rx=|ry=|circle|ellipse/i);
 });

@@ -1,6 +1,13 @@
 import React from 'react';
 import LearnPage from './LearnPage';
+import { duelApi, DuelRequestError, subscribeDuel } from './duel/api';
+import { noteClearRun } from './duel/attack';
+import { BotBoard, botPaceMs } from './duel/botBoard';
+import { planGarbage, shuffleColumns, type GarbageDrop } from './duel/garbage';
+import { botSkillLabel, buildPcView, isPcMatch, newBotMatchId, rollBotSkill, settlePcRound } from './duel/pcMatch';
+import type { MatchView, WinsRow } from './duel/types';
 import { FLAGS, playModeLabel } from './flags';
+import { redditDuelEnabled } from './modes';
 import {
   beginPointerTrack,
   idlePointerTrack,
@@ -22,32 +29,35 @@ import {
   type DropScoreAcc,
 } from './scoring';
 import { CompeteStub } from './ui/CompeteStub';
+import { DuelLobby } from './ui/DuelLobby';
+import { DuelMatch } from './ui/DuelMatch';
+import { DuelWinsBoard } from './ui/DuelWinsBoard';
 import { HighScoreBoard } from './ui/HighScoreBoard';
 
 // ── types ──────────────────────────────────────────────────────────────────
-// dx/dy: relative offset to this cell's linked pill partner (undefined = single segment)
+// dx/dy: relative offset to this cell's linked block partner (undefined = single segment)
 interface Cell { c: number; t: boolean; dx?: number; dy?: number; }
 type Grid = (Cell | null)[][];
-interface Pill { x: number; y: number; dir: number; a: number; b: number; }
+interface Block { x: number; y: number; dir: number; a: number; b: number; }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; c: number; }
 // Trail left by a hard-drop: two column indices + row range + fade timer
 interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; }
 
 // A tutorial step: prompt text, a goal that completes it, optional board setup
-// and a scripted pill. Clear-type goals retry (board resets) until achieved.
+// and a scripted block. Clear-type goals retry (board resets) until achieved.
 interface TutStep {
   title: string;
   text: string;
   goal: 'move' | 'rotate' | 'drop' | 'clear' | 'clearTarget' | 'clearBig' | 'chain' | 'clearRainbow';
   need?: number;                                  // action count for move/rotate/drop
-  pill?: [number, number];                        // scripted pill colors
+  block?: [number, number];                        // scripted block colors
   setup?: (g: Grid, cols: number, rows: number) => number; // builds board, returns target count
 }
 
 type OverlayScreen = 'menu' | 'win' | 'lose';
 
 interface State {
-  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn' | 'scores';
+  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn' | 'scores' | 'duel' | 'duelwins';
   tutStep: number; // -1 = not in tutorial; TUT.length = completed overlay
   score: number;
   left: number;
@@ -63,6 +73,18 @@ interface State {
   lastScoreId: string | null;
   lastRank: number | null;
   scoresBack: OverlayScreen;
+  incomingCount: number;
+  duelMatch: MatchView | null;
+  pcLeft: number;
+  duelError: string | null;
+  duelBusy: boolean;
+  duelWins: WinsRow[];
+  duelMonth: string;
+  duelYou: string;
+  duelBoard: 'human' | 'bot';
+  duelWinsBack: 'duel' | 'scores';
+  /** 1–10 for the current bot match. 0 when there is no bot. */
+  pcSkill: number;
 }
 
 // ── game component ─────────────────────────────────────────────────────────
@@ -79,6 +101,17 @@ export default class App extends React.Component<object, State> {
     lastScoreId: null,
     lastRank: null,
     scoresBack: 'menu',
+    incomingCount: 0,
+    duelMatch: null,
+    duelError: null,
+    duelBusy: false,
+    duelWins: [],
+    duelMonth: '',
+    duelYou: '',
+    duelBoard: 'human',
+    duelWinsBack: 'duel',
+    pcLeft: 0,
+    pcSkill: 0,
   };
 
   store = createLeaderboardStore();
@@ -96,8 +129,32 @@ export default class App extends React.Component<object, State> {
   grid: Grid = [];
   rows = 16;
   cols = 10;
-  pill: Pill | null = null;
-  phase: 'idle' | 'fall' | 'flash' | 'grav' = 'idle';
+  block: Block | null = null;
+  phase: 'idle' | 'fall' | 'flash' | 'grav' | 'incoming' | 'incoming-warning' = 'idle';
+  /** Reddit 1v1. Solo play leaves these idle. */
+  duelLive = false;
+  duelMatchId: string | null = null;
+  duelRoundRunning = 0;
+  reportedRound = 0;
+  pendingOutcome: 'win' | 'lose' | null = null;
+  savedSolo: { width: number; viruses: number; speed: number } | null = null;
+  incomingBlocks: number[] = [];
+  incomingDrops: GarbageDrop[] = [];
+  incomingFlashUntil = 0;
+  incomingDropLast = 0;
+  appliedAttackIds = new Set<string>();
+  clearRunColors: number[] = [];
+  duelTimer = 0;
+  duelUnsub: () => void = () => {};
+  /** Local Play vs PC. Never posts a round or a monthly win. */
+  pcMode = false;
+  pcBot: BotBoard | null = null;
+  pcTimer = 0;
+  pcWins: [number, number] = [0, 0];
+  pcRoundClosed = false;
+  pcCreditId = '';
+  /** One roll for the whole first-to-3. Not rerolled between rounds. */
+  pcSkill = 0;
   particles: Particle[] = [];
   dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
@@ -118,23 +175,23 @@ export default class App extends React.Component<object, State> {
   tutCount = 0;       // actions performed toward the current step's `need`
   tutAdvance = false; // set when a clear-goal step is achieved; consumed on settle
   TUT: TutStep[] = [
-    { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the pill left and right. move it 3 times!', goal: 'move', need: 3, pill: [0, 1] },
-    { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
-    { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
+    { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the block left and right. move it 3 times!', goal: 'move', need: 3, block: [0, 1] },
+    { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, block: [2, 3] },
+    { title: 'HARD DROP', text: 'swipe ▼ fast to slam the block straight down.', goal: 'drop', need: 1, block: [1, 2] },
     {
-      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
+      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red block next to the 3 reds!', goal: 'clear', block: [0, 0],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false }; return 0; },
     },
     {
-      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
+      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', block: [3, 3],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 3, t: true }; g[r - 1][1] = { c: 3, t: false }; return 1; },
     },
     {
-      title: 'BIG LINES', text: 'longer lines multiply the points: 5 = x2, 6 = x3, 7 = x4, 8+ = x5. make a line of SIX blues!', goal: 'clearBig', pill: [1, 1],
+      title: 'BIG LINES', text: 'longer lines multiply the points: 5 = x2, 6 = x3, 7 = x4, 8+ = x5. make a line of SIX blues!', goal: 'clearBig', block: [1, 1],
       setup: (g, _c, r) => { for (let x = 0; x < 4; x++) g[r - 1][x] = { c: 1, t: false }; return 0; },
     },
     {
-      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
+      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', block: [0, 0],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
         g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
@@ -143,7 +200,7 @@ export default class App extends React.Component<object, State> {
       },
     },
     {
-      title: 'RAINBOW BLOCK', text: 'the rainbow block matches ANY color! drop it next to the 3 reds to clear them — rainbow counts as red here!', goal: 'clearRainbow', pill: [4, 2],
+      title: 'RAINBOW BLOCK', text: 'the rainbow block matches ANY color! drop it next to the 3 reds to clear them — rainbow counts as red here!', goal: 'clearRainbow', block: [4, 2],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false };
         return 0;
@@ -290,6 +347,8 @@ export default class App extends React.Component<object, State> {
     if (this.onKey) window.removeEventListener('keydown', this.onKey);
     if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
     this.unbindPlayInput();
+    this.stopDuelSync();
+    this.stopPcBot();
   }
 
   // ── audio ──────────────────────────────────────────────────────────────
@@ -363,6 +422,7 @@ export default class App extends React.Component<object, State> {
     this.spawn();
     this.lastFall = performance.now();
     this.beep(523, 0.06);
+    if (this.pcMode) this.armPcBot();
   }
 
   // ── tutorial ────────────────────────────────────────────────────────────
@@ -384,7 +444,7 @@ export default class App extends React.Component<object, State> {
   setupTutStep(i: number) {
     if (i >= this.TUT.length) { // finished!
       localStorage.setItem('bitdrop-tut', '1');
-      this.phase = 'idle'; this.pill = null;
+      this.phase = 'idle'; this.block = null;
       this.setState({ tutStep: this.TUT.length });
       this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
       return;
@@ -396,8 +456,8 @@ export default class App extends React.Component<object, State> {
     this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
     this.winPending = false; this.grounded = false;
     this.setState({ tutStep: i, left: targets });
-    const [a, b] = step.pill || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
-    this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+    const [a, b] = step.block || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
+    this.block = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
     this.fastDrop = false;
     this.phase = 'fall'; this.lastFall = performance.now();
   }
@@ -410,7 +470,7 @@ export default class App extends React.Component<object, State> {
     this.tutCount++;
     this.forceUpdate(); // progress counter lives outside React state
     if (this.tutCount >= (step.need || 1)) {
-      // move/rotate advance in place (pill keeps falling); drop advances on next spawn
+      // move/rotate advance in place (block keeps falling); drop advances on next spawn
       if (goal === 'move' || goal === 'rotate') {
         this.setState({ tutStep: this.state.tutStep + 1 });
         this.tutCount = 0;
@@ -467,18 +527,22 @@ export default class App extends React.Component<object, State> {
   }
 
   spawn() {
-    // Live website: flush the previous drop before the next pill (or tut retry).
+    // Live website: flush the previous drop before the next block (or tut retry).
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
+    if (this.duelLive) {
+      // Same gap the live duel uses: dump queued garbage before the next block.
+      if (!this.applyIncomingBlocks() || this.checkClears()) return;
+    }
     if (this.isTut()) {
       const i = this.state.tutStep;
       if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
       if (this.TUT[i].setup) { this.setupTutStep(i); return; }     // clear-goal missed → retry
-      // control steps: respawn the scripted pill
-      const [a, b] = this.TUT[i].pill!;
-      this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+      // control steps: respawn the scripted block
+      const [a, b] = this.TUT[i].block!;
+      this.block = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
       this.fastDrop = false; this.grounded = false;
-      const [t1, t2] = this.pillCells();
+      const [t1, t2] = this.blockCells();
       if (this.at(t1.x, t1.y) || this.at(t2.x, t2.y)) { this.setupTutStep(i); return; } // board jammed → reset step
       this.phase = 'fall'; this.lastFall = performance.now();
       return;
@@ -486,10 +550,10 @@ export default class App extends React.Component<object, State> {
     const x = (this.cols >> 1) - 1;
     const a = this.randColor();
     const b = this.randColor(a === this.RAINBOW); // never both rainbow
-    this.pill = { x, y: 0, dir: 0, a, b };
+    this.block = { x, y: 0, dir: 0, a, b };
     this.fastDrop = false; this.grounded = false;
-    const [c1, c2] = this.pillCells();
-    if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.pill = null; this.gameOver(false); return; }
+    const [c1, c2] = this.blockCells();
+    if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.block = null; this.gameOver(false); return; }
     this.phase = 'fall'; this.lastFall = performance.now();
   }
 
@@ -499,31 +563,31 @@ export default class App extends React.Component<object, State> {
     return this.grid[y][x];
   }
 
-  pillCells(p?: Pill): { x: number; y: number; c: number }[] {
-    p = p || this.pill!;
+  blockCells(p?: Block): { x: number; y: number; c: number }[] {
+    p = p || this.block!;
     const swap = p.dir >= 2, dx = p.dir % 2 === 0 ? 1 : 0, dy = p.dir % 2 === 0 ? 0 : -1;
     return [{ x: p.x, y: p.y, c: swap ? p.b : p.a }, { x: p.x + dx, y: p.y + dy, c: swap ? p.a : p.b }];
   }
 
-  fits(p: Pill): boolean {
-    return this.pillCells(p).every(c => !this.at(c.x, c.y));
+  fits(p: Block): boolean {
+    return this.blockCells(p).every(c => !this.at(c.x, c.y));
   }
 
   move(dx: number): boolean {
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return false;
-    const p = { ...this.pill, x: this.pill.x + dx };
-    if (this.fits(p)) { this.pill = p; this.beep(200, 0.03, 'square', 0.05); this.tutHit('move'); return true; }
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return false;
+    const p = { ...this.block, x: this.block.x + dx };
+    if (this.fits(p)) { this.block = p; this.beep(200, 0.03, 'square', 0.05); this.tutHit('move'); return true; }
     return false;
   }
 
   rotate() {
     const now = performance.now();
     if (shouldDebounceRotate(now, this.lastRotateAt)) return;
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return;
     for (const kick of [0, -1, 1]) {
-      const p = { ...this.pill, dir: (this.pill.dir + 1) % 4, x: this.pill.x + kick };
+      const p = { ...this.block, dir: (this.block.dir + 1) % 4, x: this.block.x + kick };
       if (this.fits(p)) {
-        this.pill = p;
+        this.block = p;
         this.lastRotateAt = now;
         this.beep(660, 0.05);
         this.tutHit('rotate');
@@ -536,16 +600,16 @@ export default class App extends React.Component<object, State> {
   }
 
   hardDrop() {
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
-    const startY = this.pill.y;
-    let p = this.pill;
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return;
+    const startY = this.block.y;
+    let p = this.block;
     while (true) {
       const n = { ...p, y: p.y + 1 };
       if (this.fits(n)) p = n; else break;
     }
     // Only trigger effects when the piece actually travelled some distance
     if (p.y > startY) {
-      const cells = this.pillCells(p);
+      const cells = this.blockCells(p);
       this.dropFlashes.push({
         cols: cells.map(c => c.x),
         yTop: Math.max(0, startY),
@@ -555,15 +619,15 @@ export default class App extends React.Component<object, State> {
       this.dropSound();
     }
     this.tutHit('drop');
-    this.pill = p; this.lock();
+    this.block = p; this.lock();
   }
 
   lock() {
-    const [a, b] = this.pillCells();
+    const [a, b] = this.blockCells();
     const bothOn = a.y >= 0 && b.y >= 0;
     if (a.y >= 0) this.grid[a.y][a.x] = { c: a.c, t: false, ...(bothOn ? { dx: b.x - a.x, dy: b.y - a.y } : {}) };
     if (b.y >= 0) this.grid[b.y][b.x] = { c: b.c, t: false, ...(bothOn ? { dx: a.x - b.x, dy: a.y - b.y } : {}) };
-    this.pill = null; this.chain = 1; this.dropScore = idleDropScore();
+    this.block = null; this.chain = 1; this.dropScore = idleDropScore();
     this.beep(150, 0.07, 'triangle', 0.18);
     if (!this.checkClears()) this.spawn();
   }
@@ -575,11 +639,13 @@ export default class App extends React.Component<object, State> {
     const marks = new Map<string, number>();
     const R = this.RAINBOW;
     let runCount = 0;
+    this.clearRunColors = [];
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
       let run: [number, number][] = [], runColor = -1;
       const flush = () => {
         if (run.length >= 4 && runColor !== -1) {
           runCount++;
+          noteClearRun(this.clearRunColors, run.length, runColor);
           run.forEach(p => {
             const k = p[0] + ',' + p[1];
             marks.set(k, Math.max(marks.get(k) || 0, run.length));
@@ -620,6 +686,8 @@ export default class App extends React.Component<object, State> {
     // Use the colored 4+ scans from checkClears, not flash-neighbor pairs.
     const runCount = this.clearRunCount;
     this.clearRunCount = 0;
+    const attackColors = this.clearRunColors.slice();
+    this.clearRunColors = [];
     const scored: { t: boolean; runLen: number }[] = [];
     let targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
@@ -644,6 +712,7 @@ export default class App extends React.Component<object, State> {
     this.setState({ left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
     this.tutClear(targets, maxRun, this.chain, hadRainbow);
+    if (this.duelLive && attackColors.length) this.duelSendAttack(attackColors);
     this.chain++;
     this.phase = 'grav'; this.gravT = performance.now() + 120;
     if (left <= 0 && !this.isTut()) this.winPending = true;
@@ -653,7 +722,7 @@ export default class App extends React.Component<object, State> {
     // Which cells may fall one row this tick? A cell can fall only if:
     //  - it isn't a fixed target square,
     //  - the space below is empty OR also falling,
-    //  - AND its linked pill partner (if any) can fall too.
+    //  - AND its linked block partner (if any) can fall too.
     const can: boolean[][] = Array.from({ length: this.rows }, () => Array(this.cols).fill(false));
     for (let y = this.rows - 2; y >= 0; y--) {
       for (let x = 0; x < this.cols; x++) {
@@ -696,7 +765,15 @@ export default class App extends React.Component<object, State> {
   gameOver(won: boolean) {
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
-    this.phase = 'idle'; this.pill = null;
+    this.phase = 'idle'; this.block = null;
+    if (this.duelLive) {
+      this.duelLive = false;
+      this.incomingBlocks = [];
+      this.incomingDrops = [];
+      this.setState({ incomingCount: 0, paused: false });
+      void this.finishDuelRound(won);
+      return;
+    }
     const score = this.liveScore;
     let best = this.state.best, nb = false;
     if (score > best) { best = score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
@@ -740,12 +817,430 @@ export default class App extends React.Component<object, State> {
     this.setState({ screen: this.state.scoresBack });
   }
 
+  // ── reddit 1v1 duel ───────────────────────────────────────────────────
+  openDuel() {
+    if (!redditDuelEnabled()) return;
+    this.setState({ screen: 'duel', duelError: null, paused: false });
+  }
+
+  /** Local opponent. Same board sliders, first to 3, garbage. A match win hits the bot board only. */
+  startPcDuel() {
+    if (!redditDuelEnabled()) return;
+    this.stopDuelSync();
+    this.stopPcBot();
+    this.pcMode = true;
+    this.pcWins = [0, 0];
+    this.pcRoundClosed = false;
+    this.pcCreditId = newBotMatchId();
+    this.pcSkill = rollBotSkill();
+    this.setState({ pcSkill: this.pcSkill });
+    const view = buildPcView({
+      id: this.pcCreditId,
+      settings: { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed },
+      wins: [0, 0],
+      round: 1,
+      phase: 'playing',
+      roundWinner: null,
+      winner: null,
+    });
+    this.beginDuelRound(view);
+  }
+
+  async openDuelBoard(kind: 'human' | 'bot', back: 'duel' | 'scores') {
+    this.setState({ screen: 'duelwins', duelBoard: kind, duelWinsBack: back, duelError: null, duelWins: [] });
+    try {
+      const board = kind === 'bot' ? await duelApi.botWins() : await duelApi.wins();
+      this.setState({ duelWins: board.rows, duelMonth: board.month });
+    } catch (err) {
+      this.setState({
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not load the board',
+      });
+    }
+  }
+
+  joinDuel(match: MatchView) {
+    this.ingestDuel(match);
+  }
+
+  startDuelSync(postId: string) {
+    if (this.duelTimer) return;
+    this.duelTimer = window.setInterval(() => { void this.pullDuel(); }, 800);
+    this.duelUnsub = subscribeDuel(postId, (data) => {
+      const msg = data as { matchId?: string };
+      if (!msg?.matchId || msg.matchId === this.duelMatchId) void this.pullDuel();
+    });
+  }
+
+  stopDuelSync() {
+    if (this.duelTimer) window.clearInterval(this.duelTimer);
+    this.duelTimer = 0;
+    this.duelUnsub();
+    this.duelUnsub = () => {};
+  }
+
+  async pullDuel() {
+    if (!this.duelMatchId) return;
+    try {
+      const view = await duelApi.match(this.duelMatchId);
+      this.ingestDuel(view);
+    } catch {
+      /* next tick retries */
+    }
+  }
+
+  ingestDuel(view: MatchView) {
+    if (this.pcMode || isPcMatch(view)) return;
+    this.duelMatchId = view.id;
+    this.setState({ duelMatch: view, duelYou: view.you });
+    this.startDuelSync(view.postId);
+
+    if (view.phase === 'playing') {
+      if (this.reportedRound === view.round) {
+        this.haltDuelBoard();
+        if (this.state.screen === 'play') {
+          this.setState({ screen: 'duel', paused: false, incomingCount: 0 });
+        }
+        return;
+      }
+      if (this.duelLive && this.duelRoundRunning === view.round) {
+        if (this.state.screen === 'play') this.enqueueGarbage(view);
+        return;
+      }
+      this.beginDuelRound(view);
+      return;
+    }
+
+    if (view.attackIds.length) void duelApi.ack(view.id, view.attackIds).catch(() => {});
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    if (this.duelLive || this.state.screen === 'play') {
+      this.haltDuelBoard();
+      this.setState({ screen: 'duel', paused: false, incomingCount: 0 });
+    }
+  }
+
+  haltDuelBoard() {
+    this.duelLive = false;
+    this.phase = 'idle';
+    this.block = null;
+    this.incomingBlocks = [];
+    this.incomingDrops = [];
+    this.fastDrop = false;
+  }
+
+  armPcBot() {
+    this.stopPcBot();
+    const skill = this.pcSkill || 10;
+    this.pcBot = new BotBoard({
+      cols: this.cols,
+      rows: this.rows,
+      viruses: this.state.viruses,
+      skill,
+    });
+    this.setState({ pcLeft: this.pcBot.targetsLeft, pcSkill: skill });
+    this.pcTimer = window.setInterval(() => this.tickPcBot(), botPaceMs(skill, this.state.speed));
+  }
+
+  stopPcBot() {
+    if (this.pcTimer) window.clearInterval(this.pcTimer);
+    this.pcTimer = 0;
+    this.pcBot = null;
+  }
+
+  tickPcBot() {
+    if (!this.pcMode || !this.duelLive || !this.pcBot || this.state.paused || this.state.screen !== 'play') return;
+    const events = this.pcBot.playBlock();
+    const left = this.pcBot?.targetsLeft ?? 0;
+    if (left !== this.state.pcLeft) this.setState({ pcLeft: left });
+    for (const ev of events) {
+      if (ev.type === 'attack') this.receivePcAttack(ev.colors);
+      else this.settlePc(ev.outcome === 'lose');
+    }
+  }
+
+  receivePcAttack(colors: number[]) {
+    const match = this.state.duelMatch;
+    if (!this.duelLive || !this.pcMode || !match) return;
+    const id = `pc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    this.enqueueGarbage({
+      ...match,
+      attacks: [{ id, colors }],
+      attackIds: [id],
+      garbage: colors,
+    });
+  }
+
+  settlePc(playerWon: boolean) {
+    if (!this.pcMode || this.pcRoundClosed) return;
+    this.pcRoundClosed = true;
+    this.stopPcBot();
+    this.haltDuelBoard();
+    const settled = settlePcRound(this.pcWins, playerWon);
+    this.pcWins = settled.wins;
+    const match = this.state.duelMatch;
+    const view = buildPcView({
+      id: this.pcCreditId,
+      settings: {
+        width: match?.width ?? this.state.width,
+        viruses: match?.viruses ?? this.state.viruses,
+        speed: match?.speed ?? this.state.speed,
+      },
+      wins: settled.wins,
+      round: this.duelRoundRunning,
+      phase: settled.phase,
+      roundWinner: settled.roundWinner,
+      winner: settled.winner,
+    });
+    this.setState({
+      screen: 'duel',
+      duelMatch: view,
+      duelBusy: false,
+      duelError: null,
+      paused: false,
+      incomingCount: 0,
+      pcLeft: 0,
+    });
+  }
+
+  beginDuelRound(match: MatchView) {
+    if (!this.savedSolo) {
+      this.savedSolo = { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed };
+    }
+    this.duelMatchId = match.id;
+    this.duelRoundRunning = match.round;
+    this.duelLive = true;
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    this.incomingBlocks = [];
+    this.incomingDrops = [];
+    this.incomingFlashUntil = 0;
+    this.appliedAttackIds.clear();
+    if (this.pcMode) this.stopDuelSync();
+    else this.startDuelSync(match.postId);
+    this.setState({
+      width: match.width,
+      viruses: match.viruses,
+      speed: match.speed,
+      duelMatch: match,
+      duelYou: match.you,
+      duelError: null,
+      incomingCount: 0,
+      paused: false,
+      tutStep: -1,
+    }, () => this.startGame());
+  }
+
+  enqueueGarbage(view: MatchView) {
+    const fresh: number[] = [];
+    const ids: string[] = [];
+    for (const attack of view.attacks) {
+      if (this.appliedAttackIds.has(attack.id)) continue;
+      this.appliedAttackIds.add(attack.id);
+      ids.push(attack.id);
+      fresh.push(...attack.colors);
+    }
+    if (!ids.length) return;
+    if (fresh.length) {
+      const now = performance.now();
+      if (!this.incomingDrops.length) {
+        this.incomingFlashUntil = Math.max(this.incomingFlashUntil, now + 720);
+      }
+      this.incomingBlocks.push(...fresh);
+      if (this.phase === 'idle') this.phase = 'incoming-warning';
+      this.setState({ incomingCount: this.incomingBlocks.length + this.incomingDrops.length });
+    }
+    if (!this.pcMode) void duelApi.ack(view.id, ids).catch(() => {});
+  }
+
+  duelSendAttack(colors: number[]) {
+    if (this.pcMode) {
+      this.pcBot?.queueGarbage(colors);
+      return;
+    }
+    const id = this.duelMatchId;
+    if (!id || !this.duelLive) return;
+    const attackId = `${this.duelRoundRunning}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    void duelApi.attack(id, { attackId, round: this.duelRoundRunning, colors }).catch(() => {});
+  }
+
+  applyIncomingBlocks(): boolean {
+    if (!this.incomingBlocks.length) return true;
+    if (performance.now() < this.incomingFlashUntil) {
+      this.phase = 'incoming-warning';
+      return false;
+    }
+    const colors = this.incomingBlocks.splice(0);
+    const occupied = this.grid.map((row) => row.map((cell) => cell != null));
+    const plan = planGarbage(occupied, colors, shuffleColumns(this.cols));
+    if (!plan.ok) {
+      this.incomingBlocks = [];
+      this.incomingDrops = [];
+      this.setState({ incomingCount: 0 });
+      this.gameOver(false);
+      return false;
+    }
+    this.incomingDrops = plan.drops;
+    this.incomingDropLast = performance.now();
+    this.phase = 'incoming';
+    this.setState({ incomingCount: this.incomingBlocks.length + this.incomingDrops.length });
+    return false;
+  }
+
+  advanceIncomingBlocks(ts: number) {
+    if (!this.incomingDrops.length) {
+      this.phase = 'idle';
+      if (!this.checkClears()) this.spawn();
+      return;
+    }
+    const dt = Math.min(100, Math.max(0, ts - this.incomingDropLast));
+    this.incomingDropLast = ts;
+    let moving = false;
+    for (const drop of this.incomingDrops) {
+      if (drop.y < drop.targetY) {
+        drop.y = Math.min(drop.targetY, drop.y + dt * 0.024);
+        moving = true;
+      }
+    }
+    if (moving) return;
+    for (const drop of this.incomingDrops) {
+      if (drop.targetY >= 0 && drop.targetY < this.rows && drop.x >= 0 && drop.x < this.cols) {
+        this.grid[drop.targetY]![drop.x] = { c: drop.c, t: false };
+      }
+    }
+    this.incomingDrops = [];
+    this.setState({ incomingCount: this.incomingBlocks.length });
+    this.phase = 'idle';
+    if (!this.checkClears()) this.spawn();
+  }
+
+  async finishDuelRound(won: boolean) {
+    if (this.pcMode) {
+      this.settlePc(won);
+      return;
+    }
+    const id = this.duelMatchId;
+    const round = this.duelRoundRunning;
+    if (!id) return;
+    this.pendingOutcome = won ? 'win' : 'lose';
+    this.reportedRound = round;
+    this.setState({ duelBusy: true, duelError: null, screen: 'duel', paused: false });
+    try {
+      const view = await duelApi.round(id, { round, outcome: this.pendingOutcome });
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        screen: 'duel',
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not save the round',
+      });
+    }
+  }
+
+  retryDuelReport() {
+    if (this.pendingOutcome == null) return;
+    void this.finishDuelRound(this.pendingOutcome === 'win');
+  }
+
+  async readyDuel() {
+    if (this.pcMode) {
+      if (this.pcWins[0] >= 3 || this.pcWins[1] >= 3) return;
+      this.pcRoundClosed = false;
+      const match = this.state.duelMatch;
+      this.beginDuelRound(buildPcView({
+        id: this.pcCreditId,
+        settings: {
+          width: match?.width ?? this.state.width,
+          viruses: match?.viruses ?? this.state.viruses,
+          speed: match?.speed ?? this.state.speed,
+        },
+        wins: this.pcWins,
+        round: this.duelRoundRunning + 1,
+        phase: 'playing',
+        roundWinner: null,
+        winner: null,
+      }));
+      return;
+    }
+    if (!this.duelMatchId) return;
+    this.setState({ duelBusy: true, duelError: null });
+    try {
+      const view = await duelApi.ready(this.duelMatchId);
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not start the next round',
+      });
+    }
+  }
+
+  async forfeitDuel() {
+    if (this.pcMode) {
+      this.leaveDuel();
+      return;
+    }
+    if (!this.duelMatchId) return;
+    this.haltDuelBoard();
+    this.reportedRound = 0;
+    this.setState({ duelBusy: true, screen: 'duel', paused: false, incomingCount: 0 });
+    try {
+      const view = await duelApi.forfeit(this.duelMatchId);
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not forfeit',
+      });
+    }
+  }
+
+  leaveDuel(screen: 'menu' | 'duel' = 'menu') {
+    this.stopDuelSync();
+    this.stopPcBot();
+    this.pcMode = false;
+    this.pcWins = [0, 0];
+    this.pcRoundClosed = false;
+    this.pcCreditId = '';
+    this.pcSkill = 0;
+    this.haltDuelBoard();
+    this.duelMatchId = null;
+    this.duelRoundRunning = 0;
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    const solo = this.savedSolo;
+    this.savedSolo = null;
+    this.setState({
+      screen,
+      duelMatch: null,
+      duelError: null,
+      paused: false,
+      incomingCount: 0,
+      pcLeft: 0,
+      pcSkill: 0,
+      width: solo?.width ?? this.state.width,
+      viruses: solo?.viruses ?? this.state.viruses,
+      speed: solo?.speed ?? this.state.speed,
+    });
+  }
+
+  /** Another match of the same kind. A bot rolls a new skill. A human returns to the queue. */
+  playDuelAgain() {
+    if (this.pcMode || isPcMatch(this.state.duelMatch)) {
+      this.startPcDuel();
+      return;
+    }
+    this.leaveDuel('duel');
+  }
+
   // ── loop ──────────────────────────────────────────────────────────────
   loop(ts: number) {
     this.raf = requestAnimationFrame(this.loop);
     const playing = this.state.screen === 'play' && !this.state.paused;
     if (playing) {
-      if (this.phase === 'fall' && this.pill) {
+      if (this.phase === 'fall' && this.block) {
         // If grounded, wait for lock delay to expire before locking
         if (this.grounded) {
           if (ts > this.lockAt) { this.grounded = false; this.lock(); }
@@ -754,9 +1249,9 @@ export default class App extends React.Component<object, State> {
           const iv = this.fastDrop ? 45 : this.isTut() ? 1400 : 1000 - this.state.speed * 90;
           if (ts - this.lastFall > iv) {
             this.lastFall = ts;
-            const p = { ...this.pill, y: this.pill.y + 1 };
+            const p = { ...this.block, y: this.block.y + 1 };
             if (this.fits(p)) {
-              this.pill = p;
+              this.block = p;
             } else {
               // Piece hit the floor — start lock delay
               this.grounded = true;
@@ -776,6 +1271,13 @@ export default class App extends React.Component<object, State> {
             }
           }
         }
+      } else if (this.phase === 'incoming-warning') {
+        if (ts >= this.incomingFlashUntil) {
+          this.phase = 'idle';
+          this.applyIncomingBlocks();
+        }
+      } else if (this.phase === 'incoming') {
+        this.advanceIncomingBlocks(ts);
       }
     }
     this.particles = this.particles.filter(p => (p.life -= 1) > 0);
@@ -849,8 +1351,12 @@ export default class App extends React.Component<object, State> {
         this.sprite(o, x * 8, y * 8, cell.c, cell.t);
       }
     }
-    if (this.pill) {
-      for (const c of this.pillCells()) if (c.y >= 0) this.sprite(o, c.x * 8, c.y * 8, c.c, false);
+    if (this.block) {
+      for (const c of this.blockCells()) if (c.y >= 0) this.sprite(o, c.x * 8, c.y * 8, c.c, false);
+    }
+    for (const drop of this.incomingDrops) {
+      if (drop.y + 1 < 0) continue;
+      this.sprite(o, drop.x * 8, Math.round(drop.y * 8), drop.c, false);
     }
     for (const p of this.particles) {
       o.fillStyle = this.LIGHT[p.c]; o.fillRect(p.x | 0, p.y | 0, 2, 2);
@@ -891,6 +1397,12 @@ export default class App extends React.Component<object, State> {
       ctx.moveTo(boardX, py); ctx.lineTo(boardX + dw, py);
     }
     ctx.stroke();
+
+    if (this.phase === 'incoming-warning' && this.state.screen === 'play') {
+      ctx.strokeStyle = 'rgba(194,58,58,0.9)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(boardX + 2, 2, dw - 4, dh - 4);
+    }
 
     this.cellPx = scale * 8;
   }
@@ -1126,7 +1638,19 @@ export default class App extends React.Component<object, State> {
         {/* Header */}
         <div className="bitdrop-chrome-header">
           <div style={{ fontSize: 13, lineHeight: 1 }}>score: {s.score}</div>
-          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>targets {s.left}</div>
+          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1.35, textAlign: 'center' }}>
+            {isPcMatch(s.duelMatch) && s.pcSkill > 0 && (
+              <div data-testid="bot-skill" style={{ fontSize: 11, color: '#ffffff', letterSpacing: 0.4 }}>{botSkillLabel(s.pcSkill)}</div>
+            )}
+            <div>
+              targets {s.left}
+              {s.duelMatch && (isPlaying || s.screen === 'duel')
+                ? ` · ${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
+                : ''}
+              {isPcMatch(s.duelMatch) && s.pcLeft > 0 ? ` · PC ${s.pcLeft}` : ''}
+              {s.incomingCount > 0 ? ` · IN ${s.incomingCount}` : ''}
+            </div>
+          </div>
           {isPlaying && (
             <button onClick={() => this.setState({ paused: !s.paused })} style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#ffffff', border: '2px solid #6e6e72', padding: '7px 11px', cursor: 'pointer' }}>
               PAUSE
@@ -1206,13 +1730,22 @@ export default class App extends React.Component<object, State> {
                     </button>
                   </div>
 
-                  {FLAGS.enableLeaderboard && (
-                    <button className="bitdrop-btn bitdrop-btn-high" onClick={() => this.openScores('menu')}>
-                      HIGH SCORES
-                    </button>
+                  {(FLAGS.enableLeaderboard || redditDuelEnabled()) && (
+                    <div className="bitdrop-menu-actions-row">
+                      {FLAGS.enableLeaderboard && (
+                        <button className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => this.openScores('menu')}>
+                          HIGH SCORES
+                        </button>
+                      )}
+                      {redditDuelEnabled() && (
+                        <button className="bitdrop-btn bitdrop-btn-duel" style={{ flex: 1 }} onClick={() => this.openDuel()}>
+                          FIND A CHALLENGER
+                        </button>
+                      )}
+                    </div>
                   )}
 
-                  <CompeteStub />
+                  {!redditDuelEnabled() && <CompeteStub />}
                 </div>
 
                 <div className="bitdrop-menu-meta">
@@ -1233,11 +1766,75 @@ export default class App extends React.Component<object, State> {
           {/* Learn / scoring page */}
           {s.screen === 'learn' && <LearnPage onBack={() => this.setState({ screen: 'menu' })} />}
 
+          {/* Reddit 1v1 lobby / between rounds. Not the web text-link duel. */}
+          {s.screen === 'duel' && redditDuelEnabled() && (
+            s.duelMatch ? (
+              <DuelMatch
+                match={s.duelMatch}
+                error={s.duelError}
+                busy={s.duelBusy}
+                vsPc={isPcMatch(s.duelMatch)}
+                botSkill={s.pcSkill}
+                onReady={() => { void this.readyDuel(); }}
+                onForfeit={() => { void this.forfeitDuel(); }}
+                onMenu={() => this.leaveDuel()}
+                onPlayAgain={() => this.playDuelAgain()}
+                onFind={() => this.leaveDuel('duel')}
+                onRetry={this.pendingOutcome ? () => this.retryDuelReport() : undefined}
+              />
+            ) : (
+              <DuelLobby
+                settings={{ width: s.width, viruses: s.viruses, speed: s.speed }}
+                onBack={() => this.setState({ screen: 'menu' })}
+                onPlay={(match) => this.joinDuel(match)}
+                onVsPc={() => this.startPcDuel()}
+                onWins={() => { void this.openDuelBoard('human', 'duel'); }}
+                onBotWins={() => { void this.openDuelBoard('bot', 'duel'); }}
+              />
+            )
+          )}
+
+          {s.screen === 'duelwins' && redditDuelEnabled() && (
+            <div className="bitdrop-scores-overlay" data-testid="bitdrop-duel-wins">
+              <div className="bitdrop-scores-panel">
+                <DuelWinsBoard
+                  month={s.duelMonth}
+                  rows={s.duelWins}
+                  you={s.duelYou}
+                  title={s.duelBoard === 'bot' ? 'BOT BOARD' : 'DUEL WINS'}
+                  hint={s.duelBoard === 'bot' ? 'wins vs the PC' : 'wins vs players'}
+                  empty={s.duelBoard === 'bot' ? 'no bot wins this month' : 'no duel wins this month'}
+                  onBack={() => this.setState({ screen: s.duelWinsBack })}
+                />
+                <button
+                  type="button"
+                  onClick={() => { void this.openDuelBoard(s.duelBoard === 'bot' ? 'human' : 'bot', s.duelWinsBack); }}
+                  style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#fff', border: '2px solid #6e6e72', padding: '8px 12px', cursor: 'pointer' }}
+                >
+                  {s.duelBoard === 'bot' ? 'MONTHLY DUEL WINS' : 'BOT BOARD'}
+                </button>
+                {s.duelError && (
+                  <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, color: '#e07070' }}>{s.duelError}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* High score board */}
           {s.screen === 'scores' && FLAGS.enableLeaderboard && (
             <div className="bitdrop-scores-overlay" data-testid="bitdrop-scores-overlay">
               <div className="bitdrop-scores-panel">
                 <HighScoreBoard scores={s.scores} highlightId={s.lastScoreId} onBack={() => this.closeScores()} />
+                {redditDuelEnabled() && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => { void this.openDuelBoard('human', 'scores'); }}>
+                      MONTHLY DUEL WINS
+                    </button>
+                    <button type="button" className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => { void this.openDuelBoard('bot', 'scores'); }}>
+                      BOT BOARD
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1269,7 +1866,7 @@ export default class App extends React.Component<object, State> {
                 <button onClick={() => { this.setState({ tutStep: -1 }); this.startGame(); }} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   PLAY NOW
                 </button>
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', tutStep: -1, paused: false }); }}
+                <button onClick={() => { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', tutStep: -1, paused: false }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   MENU
                 </button>
@@ -1285,9 +1882,13 @@ export default class App extends React.Component<object, State> {
                 <button onClick={() => this.setState({ paused: false })} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   RESUME
                 </button>
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }}
+                <button onClick={() => {
+                  if (this.pcMode) this.leaveDuel();
+                  else if (this.duelMatchId) void this.forfeitDuel();
+                  else { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }
+                }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
-                  QUIT
+                  {this.pcMode ? 'QUIT' : this.duelMatchId ? 'FORFEIT' : 'QUIT'}
                 </button>
               </div>
             </div>
@@ -1316,7 +1917,7 @@ export default class App extends React.Component<object, State> {
                     HIGH SCORES
                   </button>
                 )}
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false }); }}
+                <button onClick={() => { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', paused: false }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   SETTINGS
                 </button>

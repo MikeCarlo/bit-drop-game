@@ -71,7 +71,7 @@ const withRow = (cols: number, rows: number, y: number, cells: { [x: number]: DC
   const g = empty(cols, rows); g[y] = row(cols, cells); return g;
 };
 
-// 1) MATCH 4: a pill drops in to complete a line of 4 reds
+// 1) MATCH 4: a block drops in to complete a line of 4 reds
 const match4Frames: Frame[] = (() => {
   const C = 6, R = 4;
   const base = { 1: { c: 0 }, 2: { c: 0 }, 3: { c: 0 } };
@@ -156,7 +156,7 @@ function GesturePanel({ children, caption }: { children: React.ReactNode; captio
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
       <div style={{ position: 'relative', width: 120, height: 90, background: '#141416', border: '3px solid #3a3a3e', overflow: 'hidden' }}>
-        {/* mini pill in the middle */}
+        {/* mini block in the middle */}
         <div style={{ position: 'absolute', top: 18, left: 44, width: 32, height: 16, display: 'flex' }}>
           <div style={{ flex: 1, background: COLORS[0] }} />
           <div style={{ flex: 1, background: COLORS[1] }} />
@@ -198,7 +198,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
 
         <Section title="FINGER CONTROLS" demo={
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center' }}>
-            <GesturePanel caption="DRAG ◀▶ — slide left or right to move the pill">
+            <GesturePanel caption="DRAG ◀▶ — slide left or right to move the block">
               <Finger anim="gestDrag" />
             </GesturePanel>
             <GesturePanel caption="TAP — tap anywhere to rotate. each tap = one rotate">
@@ -208,7 +208,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
               <Finger anim="gestHold" />
               <Finger anim="gestTap" second />
             </GesturePanel>
-            <GesturePanel caption="SWIPE ▼ — flick down fast to hard drop the pill instantly">
+            <GesturePanel caption="SWIPE ▼ — flick down fast to hard drop the block instantly">
               <Finger anim="gestSwipe" />
             </GesturePanel>
           </div>
@@ -239,7 +239,7 @@ export default function LearnPage({ onBack }: { onBack: () => void }) {
         <Section title="CHAIN REACTIONS" demo={<DemoBoard frames={chainFrames} cols={6} rows={5} />}>
           all match-4+ lines in one drop (the first clear plus any cascades) are counted, then the
           drop&apos;s base is multiplied by that line count — 2 lines = <span style={{ color: '#2ea043' }}>x2</span>, 3 = x3...<br />
-          the sequence resets when your next pill lands.<br />
+          the sequence resets when your next block lands.<br />
           line-count stacks WITH length bonuses — plan your drops!
         </Section>
 

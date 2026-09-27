@@ -350,6 +350,82 @@ input[type=range]::-moz-range-thumb {
   overflow-y: auto;
 }
 
+/* Duel lobby: overlay stays locked; the challenge list may scroll. */
+.bitdrop-duel-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.97);
+  overflow: hidden;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+}
+
+.bitdrop-duel-panel {
+  max-width: 380px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(8px, 2dvh, 18px) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+}
+
+.bitdrop-duel-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bitdrop-duel-result {
+  text-align: center;
+  gap: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.bitdrop-duel-outcome {
+  font-size: clamp(16px, 3.6dvh, 26px);
+  line-height: 1.25;
+  padding: 8px 8px;
+  border: 4px solid currentColor;
+  flex: none;
+}
+
+.bitdrop-duel-outcome-win {
+  color: #6cff8a;
+  background: #102816;
+  border-color: #2ea043;
+}
+
+.bitdrop-duel-outcome-lose {
+  color: #ff8d8d;
+  background: #2a1010;
+  border-color: #c23a3a;
+}
+
+.bitdrop-btn-duel {
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #c23a3a;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
+.bitdrop-btn-pc {
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #2f4bc9;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
 /* Win / lose: fit the panel; no overlay scrollbar. */
 .bitdrop-end-overlay {
   position: absolute;

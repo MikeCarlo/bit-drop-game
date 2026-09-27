@@ -5,6 +5,13 @@ declare module '@bitdrop/App' {
 }
 
 declare module '@bitdrop/index.css';
+interface Window {
+  __bitdropConnectRealtime?: (
+    channel: string,
+    onMessage: (data: unknown) => void,
+  ) => { disconnect?: () => void };
+}
+
 declare module '@bitdrop/ui/ReportFeedback' {
   import type { ComponentType } from 'react';
   export const ReportFeedback: ComponentType<{ compact?: boolean; subreddit?: string }>;

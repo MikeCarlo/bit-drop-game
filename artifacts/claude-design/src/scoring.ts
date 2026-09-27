@@ -3,8 +3,8 @@
  * (`https://bit-drop-a-mobile-puzzle-game.replit.app/assets/index-CWLN84aj.js`,
  * last-modified 2026-09-02).
  *
- * Points are accumulated per locked pill's clear/cascade sequence, then flushed
- * once when the next pill spawns or the game ends. A sequence that never
+ * Points are accumulated per locked block's clear/cascade sequence, then flushed
+ * once when the next block spawns or the game ends. A sequence that never
  * removes a target scores 0.
  */
 

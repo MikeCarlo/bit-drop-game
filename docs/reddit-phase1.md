@@ -2,7 +2,9 @@
 
 Website vs Reddit inventory, scoring rules, and gap list: [website-vs-reddit-parity.md](./website-vs-reddit-parity.md).
 
-Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay now also ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published). This phase does **not** implement realtime multiplayer.
+Prepare the existing Vite game (`artifacts/claude-design`) for Reddit. Phase 1 gameplay ships as a Devvit Web app in `artifacts/devvit-bit-drop` (playtest only — not published).
+
+Reddit **1v1 duels** and the monthly duel-wins board are documented in [reddit-duel.md](./reddit-duel.md). **Find a challenger** joins a Devvit Redis queue. **START NOW** on that lobby plays a local bot at a random skill from 1 (easy) to 10 (hard), shown as **BOT · SKILL N**. A win there counts on the monthly **bot board** only, not the human duel board. First to 3 opens **YOU WIN** or **YOU LOSE** with the set score, then Play again, Find a challenger, or Menu. The web app’s text-link friend duel stays on the live site. There is no SMS.
 
 ## What already existed
 
@@ -20,7 +22,7 @@ Flags are build-time / env values, read in `src/flags.ts`. `vite.config.ts` hois
 | Flag | Values | Phase 1 default | Meaning |
 | --- | --- | --- | --- |
 | `PLATFORM` / `VITE_PLATFORM` | `web` \| `reddit` | `web` | Host surface. `web` is Replit/Vite. `reddit` is the future Devvit target. |
-| `ENABLE_MULTIPLAYER` / `VITE_ENABLE_MULTIPLAYER` | bool | `false` | When off, compete UI is hidden and play is solo-only. |
+| `ENABLE_MULTIPLAYER` / `VITE_ENABLE_MULTIPLAYER` | bool | `false` on web, **`true` on the Devvit build** | Web: off hides compete; on shows the disabled stub. Reddit: on opens 1v1 duels ([reddit-duel.md](./reddit-duel.md)). |
 | `ENABLE_LEADERBOARD` / `VITE_ENABLE_LEADERBOARD` | bool | `true` | Personal high-score board after game over and from the menu. |
 
 Booleans accept `1/true/yes/on` and `0/false/no/off`.
@@ -38,11 +40,12 @@ PLATFORM=web ENABLE_MULTIPLAYER=false ENABLE_LEADERBOARD=true \
 # Reddit / Devvit playtest (Redis scores — must run on Reddit, not localhost)
 cd artifacts/devvit-bit-drop && pnpm run login && pnpm run dev
 
-# Reddit-shaped Vite build of the web app (uses RemoteLeaderboardStore → /api/scores)
-PLATFORM=reddit ENABLE_MULTIPLAYER=false ENABLE_LEADERBOARD=true \
+# Reddit-shaped Vite build of the web app (uses RemoteLeaderboardStore → /api/scores).
+# The Devvit package bakes ENABLE_MULTIPLAYER=true itself; this command is the web artifact.
+PLATFORM=reddit ENABLE_MULTIPLAYER=true ENABLE_LEADERBOARD=true \
   PORT=24722 pnpm --filter @workspace/claude-design run build
 
-# Preview the Phase 2 compete stub (no real match)
+# Web preview of the disabled compete stub (no match, no SMS)
 ENABLE_MULTIPLAYER=true PORT=24722 pnpm --filter @workspace/claude-design run dev
 ```
 
@@ -75,20 +78,12 @@ Devvit pattern (per subreddit install, not global):
 
 `ScoreRecord.player` is `"You"` on web; the Devvit submit path overwrites it with `reddit.getCurrentUsername()`.
 
-## Phase 2 multiplayer flag (hooks only)
+## Multiplayer
 
-`ENABLE_MULTIPLAYER=false` (default) hides every compete control. The game always starts solo. Tutorial UX is unchanged. Portrait and landscape both play.
+`ENABLE_MULTIPLAYER=false` on the web artifact hides every compete control. Play stays solo. Tutorial UX is unchanged. Portrait and landscape both play.
 
-When the flag is **true**, `CompeteStub` appears on the menu. It does not start a match.
+On **web**, `ENABLE_MULTIPLAYER=true` still shows `CompeteStub` (disabled). It does not start a match and it does not send texts.
 
-Plug-in points (already exported, still no-ops):
+On **Reddit**, the Devvit build turns the flag on and replaces that stub with **FIND A CHALLENGER**. See [reddit-duel.md](./reddit-duel.md). `resolvePlayMode('compete')` is `compete` only in that Reddit case. `startCompete()` stays null — 2–4 player rooms are not a mode. The monthly board is `GET /api/duel/wins`, not `HighScoreBoard`. Bot games are not on that board.
 
-| Hook | File | Phase 2 job |
-| --- | --- | --- |
-| `canOpenCompeteLobby()` | `src/modes.ts` | Gate the lobby on flag + server readiness |
-| `startCompete(seats)` | `src/modes.ts` | Devvit realtime / post-thread matchmaking, 2–4 players |
-| `CompeteStub` | `src/ui/CompeteStub.tsx` | Replace the disabled button with a real lobby |
-| `resolvePlayMode()` | `src/modes.ts` | Return `'compete'` once a session exists |
-| `createLeaderboardStore()` | `src/leaderboard/index.ts` | Optional shared compete board on Redis |
-
-Out of scope here: realtime 4-player competition, YouTube Playables, and `devvit publish` (Mike publishes after playtest). The playtest app lives in `artifacts/devvit-bit-drop`.
+Out of scope: 4-player competition, YouTube Playables, and `devvit publish` (Mike publishes after playtest).
