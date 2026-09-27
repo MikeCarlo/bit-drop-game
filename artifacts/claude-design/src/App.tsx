@@ -33,6 +33,7 @@ import { DuelLobby } from './ui/DuelLobby';
 import { DuelMatch } from './ui/DuelMatch';
 import { DuelWinsBoard } from './ui/DuelWinsBoard';
 import { HighScoreBoard } from './ui/HighScoreBoard';
+import { APP_VERSION } from './version';
 
 // ── types ──────────────────────────────────────────────────────────────────
 // dx/dy: relative offset to this cell's linked block partner (undefined = single segment)
@@ -1926,9 +1927,12 @@ export default class App extends React.Component<object, State> {
           )}
         </div>
 
-        {/* Footer hint bar */}
+        {/* Footer hint bar. Version sits on the home menu only, at the bottom. */}
         <div className="bitdrop-chrome-footer">
           drag ◀▶ move · tap to rotate · swipe ▼ drop
+          {isMenu && (
+            <div className="bitdrop-menu-version" data-testid="bitdrop-version">v{APP_VERSION}</div>
+          )}
         </div>
 
         </div>

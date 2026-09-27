@@ -17,7 +17,7 @@ Controls: drag left or right to move, tap to rotate, swipe down to hard drop. Yo
 
 ## For moderators
 
-1. Install **bit-drop** on your subreddit.
+1. Install **bit-drops** on your subreddit.
 2. A BIT·DROP post is created automatically on install. You can also use the subreddit overflow menu: **Create a BIT·DROP post**.
 3. Community terms: [r/BitDropGame/wiki/terms](https://www.reddit.com/r/BitDropGame/wiki/terms)  
    Privacy: [r/BitDropGame/wiki/privacy](https://www.reddit.com/r/BitDropGame/wiki/privacy)

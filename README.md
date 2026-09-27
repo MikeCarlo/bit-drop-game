@@ -20,7 +20,7 @@ pnpm run dev          # `devvit playtest`
 
 When the CLI prints **Playtest ready**, open the URL it gives you:
 
-`https://www.reddit.com/r/<test_sub>/?playtest=bit-drop`
+`https://www.reddit.com/r/<test_sub>/?playtest=bit-drops`
 
 Refresh that page. Tap **PLAY** on the splash, then play in portrait or landscape. The inline splash must not trap Reddit feed scroll.
 

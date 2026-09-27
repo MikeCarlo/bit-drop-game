@@ -77,6 +77,16 @@ input[type=range]::-moz-range-thumb {
   line-height: 1.45;
 }
 
+.bitdrop-menu-version {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #9a9aa0;
+  pointer-events: none;
+}
+
 .bitdrop-menu-overlay {
   position: absolute;
   inset: 0;

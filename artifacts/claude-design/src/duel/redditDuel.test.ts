@@ -48,5 +48,11 @@ test('reddit duel UI does not invite by SMS', () => {
 
 test('devvit build turns multiplayer on', () => {
   const vite = readFileSync(join(here, '../../../devvit-bit-drop/vite.config.ts'), 'utf8');
+  const env = readFileSync(join(here, '../../../devvit-bit-drop/.env'), 'utf8');
   assert.match(vite, /ENABLE_MULTIPLAYER:\s*'true'/);
+  // .env is loaded before the vite.config defaults and wins when it disagrees.
+  assert.match(env, /^VITE_PLATFORM=reddit$/m);
+  assert.match(env, /^VITE_ENABLE_MULTIPLAYER=true$/m);
+  assert.match(env, /^VITE_ENABLE_LEADERBOARD=true$/m);
+  assert.doesNotMatch(env, /VITE_ENABLE_MULTIPLAYER=false/);
 });

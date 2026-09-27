@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "bit-drop",
+  "name": "bit-drops",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
