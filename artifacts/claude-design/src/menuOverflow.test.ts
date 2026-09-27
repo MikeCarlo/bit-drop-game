@@ -45,6 +45,21 @@ test('high-score and end overlays do not page-scroll', () => {
   assert.match(end, /overflow:\s*hidden/);
 });
 
+test('home menu shows the shared version at the bottom of the screen', () => {
+  const version = readFileSync(join(here, 'version.ts'), 'utf8');
+  assert.match(version, /export const APP_VERSION = '0\.1\.9'/);
+  assert.match(app, /import \{ APP_VERSION \} from '\.\/version'/);
+  const footer = app.slice(app.indexOf('Footer hint bar'), app.indexOf('bitdrop-chrome-footer') + 400);
+  assert.match(footer, /isMenu &&/);
+  assert.match(footer, /className="bitdrop-menu-version"/);
+  assert.match(footer, /data-testid="bitdrop-version"/);
+  assert.match(footer, /v\{APP_VERSION\}/);
+  const rule = block(css, '.bitdrop-menu-version');
+  assert.match(rule, /pointer-events:\s*none/);
+  assert.match(rule, /font-size:\s*10px/);
+  assert.match(rule, /color:\s*#9a9aa0/);
+});
+
 test('splash still must not lock Reddit feed scroll', () => {
   const splashDir = join(here, '../../devvit-bit-drop/src/client');
   const splashCss = readFileSync(join(splashDir, 'splash.css'), 'utf8');
