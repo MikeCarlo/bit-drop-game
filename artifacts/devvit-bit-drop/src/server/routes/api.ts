@@ -9,8 +9,11 @@ import type {
 } from '../../shared/api';
 import { SCORE_BOARD_LIMIT } from '../../shared/scores';
 import { bestScore, listScores, submitScore } from '../core/leaderboard';
+import { duel } from './duel';
 
 export const api = new Hono();
+
+api.route('/duel', duel);
 
 api.get('/init', async (c) => {
   const { postId } = context;

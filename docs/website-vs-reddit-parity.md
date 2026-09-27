@@ -188,7 +188,7 @@ Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No level
 | --- | --- |
 | `src/client/splash.tsx` | Inline post: “hey {username} — match 4…”, **PLAY** → `requestExpandedMode(..., 'game')`. Feed-scroll-friendly CSS (`touch-action: pan-y`; no wheel/touchmove `preventDefault`). |
 | `src/client/game.tsx` | `createRoot` + shared `App`. No props, no patch. |
-| `vite.config.ts` | Alias `@bitdrop` → `../claude-design/src`. Bakes `PLATFORM=reddit`, multiplayer off, leaderboard on. React 19 vs web React 18. |
+| `vite.config.ts` | Alias `@bitdrop` → `../claude-design/src`. Bakes `PLATFORM=reddit`, multiplayer **on** (1v1 duels), leaderboard on. React 19 vs web React 18. |
 | `src/server/core/leaderboard.ts` | Redis `bitdrop:board` (zset), `bitdrop:rows` (hash), `bitdrop:best` (per-username). Cap 20, list 10. 30-day TTL + PostDelete scrub. |
 | `src/server/routes/api.ts` | `GET /api/init` (unused by client), `GET/POST /api/scores`, `GET /api/scores/best`. Submit overwrites `player` with `reddit.getCurrentUsername()`. |
 | `src/server/core/post.ts` | Custom post title `BIT·DROP — match 4, clear the targets`. |
@@ -216,7 +216,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Next-pill preview | **Website-only** | |
 | Score popups / round summary | **Website-only** | |
 | Best level | **Website-only** | `bitdrop-best-level`. |
-| Friend match / P2P duel / garbage | **Website-only** | GitHub `CompeteStub` is a disabled Phase 2 hook, not this duel. |
+| Friend match / P2P duel / garbage | **Website text-link duel stays on the live site.** Reddit now has its own 1v1 (Devvit Redis, first to 3, garbage colors) — see [reddit-duel.md](./reddit-duel.md). Not SMS, not the Sep-2 WebRTC room. |
 | Bidirectional clear scan | **Different** (minor) | Live scans both ways; GitHub one way. Ordinary + rainbow-from-either-end runs still clear. |
 | First-run tutorial gate | **Parity** | `bitdrop-tut`. |
 

@@ -74,7 +74,7 @@ export const Splash = () => {
           {busy ? 'OPENING…' : 'PLAY'}
         </button>
         <div style={{ fontFamily: BODY, fontWeight: 600, fontSize: 12, color: '#8e8e94', lineHeight: 1.5 }}>
-          solo · high scores · any orientation
+          solo · 1v1 duels · high scores
         </div>
         <div style={{ fontFamily: BODY, fontSize: 12, lineHeight: 1.5 }}>
           <ReportFeedback />

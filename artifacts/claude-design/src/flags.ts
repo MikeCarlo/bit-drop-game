@@ -6,9 +6,9 @@ export interface FeatureFlags {
   /** Host surface. `web` is the Replit/Vite default; `reddit` is the Devvit target. */
   platform: Platform;
   /**
-   * Phase 2 hook. When false (Phase 1 default) the game is solo-only and any
-   * compete UI is hidden. Flip to true to surface the compete stub; it does
-   * not start a real 4-player match yet.
+   * When false the game is solo-only and compete UI is hidden.
+   * On Reddit (`PLATFORM=reddit`) true opens 1v1 duels. On web, true still
+   * shows the disabled compete stub — text-link duels stay on the live site.
    */
   enableMultiplayer: boolean;
   /** Personal / platform high-score board. */
@@ -41,5 +41,6 @@ export const FLAGS: FeatureFlags = {
 };
 
 export function playModeLabel(): string {
+  if (FLAGS.platform === 'reddit' && FLAGS.enableMultiplayer) return '1v1-duel';
   return FLAGS.enableMultiplayer ? 'compete-ready' : 'solo';
 }

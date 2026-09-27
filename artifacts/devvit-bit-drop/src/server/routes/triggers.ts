@@ -6,6 +6,7 @@ import type {
 } from '@devvit/web/shared';
 import { context } from '@devvit/web/server';
 import { createPost } from '../core/post';
+import { scrubDuelPost } from '../core/duel';
 import { pruneExpiredScores, scrubDeletedPost } from '../core/leaderboard';
 
 export const triggers = new Hono();
@@ -40,10 +41,13 @@ triggers.post('/on-post-delete', async (c) => {
     const input = await c.req.json<OnPostDeleteRequest>();
     const postId = input.postId;
     const postResult = await scrubDeletedPost(postId);
+    const duels = await scrubDuelPost(postId);
     // Post author is usually the app/mod who created the game post — do not
     // anonymize their whole board. Rows for this post (including player names) are dropped.
     return c.json<TriggerResponse>(
-      ok(`Scrubbed post ${postId ?? 'unknown'}: dropped ${postResult.dropped} score rows`),
+      ok(
+        `Scrubbed post ${postId ?? 'unknown'}: dropped ${postResult.dropped} score rows, ${duels} duel records`,
+      ),
       200,
     );
   } catch (error) {

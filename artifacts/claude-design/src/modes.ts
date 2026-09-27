@@ -1,11 +1,16 @@
 import { FLAGS } from './flags';
 
-/** Phase 1 is solo. `compete` is reserved for Phase 2 (up to 4 players). */
+/** Solo puzzle, or a Reddit 1v1 duel (`compete`). */
 export type PlayMode = 'solo' | 'compete';
 
+/** Reddit build with multiplayer on. Web keeps the text-link duel on the live site. */
+export function redditDuelEnabled(): boolean {
+  return FLAGS.platform === 'reddit' && FLAGS.enableMultiplayer;
+}
+
 /**
- * Phase 2 hook: open a compete lobby (2–4 seats) when the flag is on.
- * Phase 1 never starts a match — see `startCompete`.
+ * Web: flag surfaces the disabled compete stub.
+ * Reddit: flag surfaces the 1v1 duel lobby (Devvit server, no SMS).
  */
 export function canOpenCompeteLobby(): boolean {
   return FLAGS.enableMultiplayer;
@@ -18,14 +23,15 @@ export interface CompeteSession {
 }
 
 /**
- * Phase 2 plug-in: replace this no-op with Devvit realtime / post-thread
- * matchmaking. Safe to call anytime — returns null until that lands.
+ * 3–4 player seats are not a mode. Reddit 1v1 is the duel lobby, not this call.
+ * Returns null so older hook callers cannot start a phantom room.
  */
 export async function startCompete(_seats: 2 | 3 | 4): Promise<CompeteSession | null> {
   return null;
 }
 
-/** Force solo while compete is unimplemented (even if the flag is on). */
-export function resolvePlayMode(_requested: PlayMode): PlayMode {
+/** `compete` only while a Reddit duel is actually requested and enabled. */
+export function resolvePlayMode(requested: PlayMode): PlayMode {
+  if (requested === 'compete' && redditDuelEnabled()) return 'compete';
   return 'solo';
 }

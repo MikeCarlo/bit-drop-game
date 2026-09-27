@@ -10,7 +10,8 @@ BIT·DROP is a short puzzle game for Reddit. You drop two-color pills, line up *
 2. On the menu, optionally change board width, target count, and speed. Tap **START**. The first time, a short tutorial runs; you can skip it.
 3. **Match 4.** Line up 4 or more of one color (row or column) to clear those pieces. Rainbow blocks match any color.
 4. **Targets.** Squares with a face are targets. Clear every target to win the board.
-5. **Scores.** Points count only when a drop also clears at least one target. After the game, your score is saved to this community’s high-score board under your Reddit username.
+5. **Scores.** Points count only when a drop also clears at least one target. After a solo game, your score is saved to this community’s high-score board under your Reddit username.
+6. **1v1 duel (Reddit only).** From the menu, **1v1 DUEL**, type another Reddit username, and send. They accept inside the app (or open your link to this post). First to 3 rounds. Clearing lines sends garbage blocks. Duel wins are a separate monthly board, not the solo high-score list. No text message.
 
 Controls: drag left or right to move, tap to rotate, swipe down to hard drop. You can also use the on-screen tutorial and the **SCORING** / **HIGH SCORES** buttons.
 
@@ -31,9 +32,9 @@ No extra settings are required.
 
 ## Privacy and data
 
-BIT·DROP stores high scores in **Devvit Redis** on this subreddit install: score, win/loss, board settings, play time, the post id, and the player’s **Reddit username**. It does not collect email, does not use off-platform accounts, and does not load third-party fonts or analytics.
+BIT·DROP stores high scores in **Devvit Redis** on this subreddit install: score, win/loss, board settings, play time, the post id, and the player’s **Reddit username**. Duels store the same username plus the opponent’s username, the challenge, and round results. It does not collect email, does not use off-platform accounts, does not send SMS, and does not load third-party fonts or analytics.
 
-**Retention (30 days).** Score keys `bitdrop:board`, `bitdrop:rows`, and `bitdrop:best` expire 30 days after the last write. Individual rows older than 30 days are pruned when the board is read or written, and again on a daily job. Reddit does not send an account-deletion event to apps; usernames therefore drop with that 30-day window. If a BIT·DROP post is deleted, the `PostDelete` trigger removes scores submitted from that post (including the usernames on those rows). To ask for a faster removal, use **REPORT / FEEDBACK**.
+**Retention (30 days for solo scores).** Score keys `bitdrop:board`, `bitdrop:rows`, and `bitdrop:best` expire 30 days after the last write. Individual rows older than 30 days are pruned when the board is read or written, and again on a daily job. Duel challenges and live matches expire after **7 days**. The monthly duel-wins keys `bitdrop:duel:wins:YYYY-MM` expire **40 days** after the last win so the UTC month stays readable, then the usernames on that board drop. Reddit does not send an account-deletion event to apps. If a BIT·DROP post is deleted, the `PostDelete` trigger removes solo scores and duel records from that post. To ask for a faster removal, use **REPORT / FEEDBACK**. Key details: [docs/reddit-duel.md](../../docs/reddit-duel.md).
 
 ---
 

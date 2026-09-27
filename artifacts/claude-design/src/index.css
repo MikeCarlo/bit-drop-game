@@ -350,6 +350,47 @@ input[type=range]::-moz-range-thumb {
   overflow-y: auto;
 }
 
+/* Duel lobby: overlay stays locked; the challenge list may scroll. */
+.bitdrop-duel-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 22, 0.97);
+  overflow: hidden;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+}
+
+.bitdrop-duel-panel {
+  max-width: 380px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(8px, 2dvh, 18px) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+}
+
+.bitdrop-duel-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bitdrop-btn-duel {
+  font-size: clamp(8px, 1.45cqh, 10px);
+  background: #c23a3a;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  padding: clamp(6px, 1.3cqh, 12px);
+}
+
 /* Win / lose: fit the panel; no overlay scrollbar. */
 .bitdrop-end-overlay {
   position: absolute;

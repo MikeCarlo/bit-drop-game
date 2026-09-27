@@ -1,6 +1,11 @@
 import React from 'react';
 import LearnPage from './LearnPage';
+import { duelApi, DuelRequestError, subscribeDuel } from './duel/api';
+import { noteClearRun } from './duel/attack';
+import { planGarbage, shuffleColumns, type GarbageDrop } from './duel/garbage';
+import type { MatchView, WinsRow } from './duel/types';
 import { FLAGS, playModeLabel } from './flags';
+import { redditDuelEnabled } from './modes';
 import {
   beginPointerTrack,
   idlePointerTrack,
@@ -22,6 +27,9 @@ import {
   type DropScoreAcc,
 } from './scoring';
 import { CompeteStub } from './ui/CompeteStub';
+import { DuelLobby } from './ui/DuelLobby';
+import { DuelMatch } from './ui/DuelMatch';
+import { DuelWinsBoard } from './ui/DuelWinsBoard';
 import { HighScoreBoard } from './ui/HighScoreBoard';
 
 // ── types ──────────────────────────────────────────────────────────────────
@@ -47,7 +55,7 @@ interface TutStep {
 type OverlayScreen = 'menu' | 'win' | 'lose';
 
 interface State {
-  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn' | 'scores';
+  screen: 'menu' | 'play' | 'win' | 'lose' | 'learn' | 'scores' | 'duel' | 'duelwins';
   tutStep: number; // -1 = not in tutorial; TUT.length = completed overlay
   score: number;
   left: number;
@@ -63,6 +71,13 @@ interface State {
   lastScoreId: string | null;
   lastRank: number | null;
   scoresBack: OverlayScreen;
+  incomingCount: number;
+  duelMatch: MatchView | null;
+  duelError: string | null;
+  duelBusy: boolean;
+  duelWins: WinsRow[];
+  duelMonth: string;
+  duelYou: string;
 }
 
 // ── game component ─────────────────────────────────────────────────────────
@@ -79,6 +94,13 @@ export default class App extends React.Component<object, State> {
     lastScoreId: null,
     lastRank: null,
     scoresBack: 'menu',
+    incomingCount: 0,
+    duelMatch: null,
+    duelError: null,
+    duelBusy: false,
+    duelWins: [],
+    duelMonth: '',
+    duelYou: '',
   };
 
   store = createLeaderboardStore();
@@ -97,7 +119,22 @@ export default class App extends React.Component<object, State> {
   rows = 16;
   cols = 10;
   pill: Pill | null = null;
-  phase: 'idle' | 'fall' | 'flash' | 'grav' = 'idle';
+  phase: 'idle' | 'fall' | 'flash' | 'grav' | 'incoming' | 'incoming-warning' = 'idle';
+  /** Reddit 1v1. Solo play leaves these idle. */
+  duelLive = false;
+  duelMatchId: string | null = null;
+  duelRoundRunning = 0;
+  reportedRound = 0;
+  pendingOutcome: 'win' | 'lose' | null = null;
+  savedSolo: { width: number; viruses: number; speed: number } | null = null;
+  incomingBlocks: number[] = [];
+  incomingDrops: GarbageDrop[] = [];
+  incomingFlashUntil = 0;
+  incomingDropLast = 0;
+  appliedAttackIds = new Set<string>();
+  clearRunColors: number[] = [];
+  duelTimer = 0;
+  duelUnsub: () => void = () => {};
   particles: Particle[] = [];
   dropFlashes: DropFlash[] = [];
   flash: [number, number][] = [];
@@ -290,6 +327,7 @@ export default class App extends React.Component<object, State> {
     if (this.onKey) window.removeEventListener('keydown', this.onKey);
     if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
     this.unbindPlayInput();
+    this.stopDuelSync();
   }
 
   // ── audio ──────────────────────────────────────────────────────────────
@@ -470,6 +508,10 @@ export default class App extends React.Component<object, State> {
     // Live website: flush the previous drop before the next pill (or tut retry).
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
+    if (this.duelLive) {
+      // Same gap the live duel uses: dump queued garbage before the next pill.
+      if (!this.applyIncomingBlocks() || this.checkClears()) return;
+    }
     if (this.isTut()) {
       const i = this.state.tutStep;
       if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
@@ -575,11 +617,13 @@ export default class App extends React.Component<object, State> {
     const marks = new Map<string, number>();
     const R = this.RAINBOW;
     let runCount = 0;
+    this.clearRunColors = [];
     const scan = (sx: number, sy: number, dx: number, dy: number) => {
       let run: [number, number][] = [], runColor = -1;
       const flush = () => {
         if (run.length >= 4 && runColor !== -1) {
           runCount++;
+          noteClearRun(this.clearRunColors, run.length, runColor);
           run.forEach(p => {
             const k = p[0] + ',' + p[1];
             marks.set(k, Math.max(marks.get(k) || 0, run.length));
@@ -620,6 +664,8 @@ export default class App extends React.Component<object, State> {
     // Use the colored 4+ scans from checkClears, not flash-neighbor pairs.
     const runCount = this.clearRunCount;
     this.clearRunCount = 0;
+    const attackColors = this.clearRunColors.slice();
+    this.clearRunColors = [];
     const scored: { t: boolean; runLen: number }[] = [];
     let targets = 0, maxRun = 0, hadRainbow = false;
     for (const [x, y] of this.flash) {
@@ -644,6 +690,7 @@ export default class App extends React.Component<object, State> {
     this.setState({ left });
     this.arp(this.chain > 1 ? [659, 784, 988] : [523, 659, 784], 55, 0.09);
     this.tutClear(targets, maxRun, this.chain, hadRainbow);
+    if (this.duelLive && attackColors.length) this.duelSendAttack(attackColors);
     this.chain++;
     this.phase = 'grav'; this.gravT = performance.now() + 120;
     if (left <= 0 && !this.isTut()) this.winPending = true;
@@ -697,6 +744,14 @@ export default class App extends React.Component<object, State> {
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
     this.phase = 'idle'; this.pill = null;
+    if (this.duelLive) {
+      this.duelLive = false;
+      this.incomingBlocks = [];
+      this.incomingDrops = [];
+      this.setState({ incomingCount: 0, paused: false });
+      void this.finishDuelRound(won);
+      return;
+    }
     const score = this.liveScore;
     let best = this.state.best, nb = false;
     if (score > best) { best = score; nb = true; localStorage.setItem('bitdrop-best', String(best)); }
@@ -740,6 +795,277 @@ export default class App extends React.Component<object, State> {
     this.setState({ screen: this.state.scoresBack });
   }
 
+  // ── reddit 1v1 duel ───────────────────────────────────────────────────
+  openDuel() {
+    if (!redditDuelEnabled()) return;
+    this.setState({ screen: 'duel', duelError: null, paused: false });
+  }
+
+  async openDuelWins() {
+    this.setState({ screen: 'duelwins' });
+    try {
+      const board = await duelApi.wins();
+      this.setState({ duelWins: board.rows, duelMonth: board.month });
+    } catch (err) {
+      this.setState({
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not load duel wins',
+      });
+    }
+  }
+
+  joinDuel(match: MatchView) {
+    this.ingestDuel(match);
+  }
+
+  startDuelSync(postId: string) {
+    if (this.duelTimer) return;
+    this.duelTimer = window.setInterval(() => { void this.pullDuel(); }, 800);
+    this.duelUnsub = subscribeDuel(postId, (data) => {
+      const msg = data as { matchId?: string };
+      if (!msg?.matchId || msg.matchId === this.duelMatchId) void this.pullDuel();
+    });
+  }
+
+  stopDuelSync() {
+    if (this.duelTimer) window.clearInterval(this.duelTimer);
+    this.duelTimer = 0;
+    this.duelUnsub();
+    this.duelUnsub = () => {};
+  }
+
+  async pullDuel() {
+    if (!this.duelMatchId) return;
+    try {
+      const view = await duelApi.match(this.duelMatchId);
+      this.ingestDuel(view);
+    } catch {
+      /* next tick retries */
+    }
+  }
+
+  ingestDuel(view: MatchView) {
+    this.duelMatchId = view.id;
+    this.setState({ duelMatch: view, duelYou: view.you });
+    this.startDuelSync(view.postId);
+
+    if (view.phase === 'playing') {
+      if (this.reportedRound === view.round) {
+        this.haltDuelBoard();
+        if (this.state.screen === 'play') {
+          this.setState({ screen: 'duel', paused: false, incomingCount: 0 });
+        }
+        return;
+      }
+      if (this.duelLive && this.duelRoundRunning === view.round) {
+        if (this.state.screen === 'play') this.enqueueGarbage(view);
+        return;
+      }
+      this.beginDuelRound(view);
+      return;
+    }
+
+    if (view.attackIds.length) void duelApi.ack(view.id, view.attackIds).catch(() => {});
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    if (this.duelLive || this.state.screen === 'play') {
+      this.haltDuelBoard();
+      this.setState({ screen: 'duel', paused: false, incomingCount: 0 });
+    }
+  }
+
+  haltDuelBoard() {
+    this.duelLive = false;
+    this.phase = 'idle';
+    this.pill = null;
+    this.incomingBlocks = [];
+    this.incomingDrops = [];
+    this.fastDrop = false;
+  }
+
+  beginDuelRound(match: MatchView) {
+    if (!this.savedSolo) {
+      this.savedSolo = { width: this.state.width, viruses: this.state.viruses, speed: this.state.speed };
+    }
+    this.duelMatchId = match.id;
+    this.duelRoundRunning = match.round;
+    this.duelLive = true;
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    this.incomingBlocks = [];
+    this.incomingDrops = [];
+    this.incomingFlashUntil = 0;
+    this.appliedAttackIds.clear();
+    this.startDuelSync(match.postId);
+    this.setState({
+      width: match.width,
+      viruses: match.viruses,
+      speed: match.speed,
+      duelMatch: match,
+      duelYou: match.you,
+      duelError: null,
+      incomingCount: 0,
+      paused: false,
+      tutStep: -1,
+    }, () => this.startGame());
+  }
+
+  enqueueGarbage(view: MatchView) {
+    const fresh: number[] = [];
+    const ids: string[] = [];
+    for (const attack of view.attacks) {
+      if (this.appliedAttackIds.has(attack.id)) continue;
+      this.appliedAttackIds.add(attack.id);
+      ids.push(attack.id);
+      fresh.push(...attack.colors);
+    }
+    if (!ids.length) return;
+    if (fresh.length) {
+      const now = performance.now();
+      if (!this.incomingDrops.length) {
+        this.incomingFlashUntil = Math.max(this.incomingFlashUntil, now + 720);
+      }
+      this.incomingBlocks.push(...fresh);
+      if (this.phase === 'idle') this.phase = 'incoming-warning';
+      this.setState({ incomingCount: this.incomingBlocks.length + this.incomingDrops.length });
+    }
+    void duelApi.ack(view.id, ids).catch(() => {});
+  }
+
+  duelSendAttack(colors: number[]) {
+    const id = this.duelMatchId;
+    if (!id || !this.duelLive) return;
+    const attackId = `${this.duelRoundRunning}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    void duelApi.attack(id, { attackId, round: this.duelRoundRunning, colors }).catch(() => {});
+  }
+
+  applyIncomingBlocks(): boolean {
+    if (!this.incomingBlocks.length) return true;
+    if (performance.now() < this.incomingFlashUntil) {
+      this.phase = 'incoming-warning';
+      return false;
+    }
+    const colors = this.incomingBlocks.splice(0);
+    const occupied = this.grid.map((row) => row.map((cell) => cell != null));
+    const plan = planGarbage(occupied, colors, shuffleColumns(this.cols));
+    if (!plan.ok) {
+      this.incomingBlocks = [];
+      this.incomingDrops = [];
+      this.setState({ incomingCount: 0 });
+      this.gameOver(false);
+      return false;
+    }
+    this.incomingDrops = plan.drops;
+    this.incomingDropLast = performance.now();
+    this.phase = 'incoming';
+    this.setState({ incomingCount: this.incomingBlocks.length + this.incomingDrops.length });
+    return false;
+  }
+
+  advanceIncomingBlocks(ts: number) {
+    if (!this.incomingDrops.length) {
+      this.phase = 'idle';
+      if (!this.checkClears()) this.spawn();
+      return;
+    }
+    const dt = Math.min(100, Math.max(0, ts - this.incomingDropLast));
+    this.incomingDropLast = ts;
+    let moving = false;
+    for (const drop of this.incomingDrops) {
+      if (drop.y < drop.targetY) {
+        drop.y = Math.min(drop.targetY, drop.y + dt * 0.024);
+        moving = true;
+      }
+    }
+    if (moving) return;
+    for (const drop of this.incomingDrops) {
+      if (drop.targetY >= 0 && drop.targetY < this.rows && drop.x >= 0 && drop.x < this.cols) {
+        this.grid[drop.targetY]![drop.x] = { c: drop.c, t: false };
+      }
+    }
+    this.incomingDrops = [];
+    this.setState({ incomingCount: this.incomingBlocks.length });
+    this.phase = 'idle';
+    if (!this.checkClears()) this.spawn();
+  }
+
+  async finishDuelRound(won: boolean) {
+    const id = this.duelMatchId;
+    const round = this.duelRoundRunning;
+    if (!id) return;
+    this.pendingOutcome = won ? 'win' : 'lose';
+    this.reportedRound = round;
+    this.setState({ duelBusy: true, duelError: null, screen: 'duel', paused: false });
+    try {
+      const view = await duelApi.round(id, { round, outcome: this.pendingOutcome });
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        screen: 'duel',
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not save the round',
+      });
+    }
+  }
+
+  retryDuelReport() {
+    if (this.pendingOutcome == null) return;
+    void this.finishDuelRound(this.pendingOutcome === 'win');
+  }
+
+  async readyDuel() {
+    if (!this.duelMatchId) return;
+    this.setState({ duelBusy: true, duelError: null });
+    try {
+      const view = await duelApi.ready(this.duelMatchId);
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not start the next round',
+      });
+    }
+  }
+
+  async forfeitDuel() {
+    if (!this.duelMatchId) return;
+    this.haltDuelBoard();
+    this.reportedRound = 0;
+    this.setState({ duelBusy: true, screen: 'duel', paused: false, incomingCount: 0 });
+    try {
+      const view = await duelApi.forfeit(this.duelMatchId);
+      this.setState({ duelBusy: false });
+      this.ingestDuel(view);
+    } catch (err) {
+      this.setState({
+        duelBusy: false,
+        duelError: err instanceof DuelRequestError ? err.message : 'Could not forfeit',
+      });
+    }
+  }
+
+  leaveDuel() {
+    this.stopDuelSync();
+    this.haltDuelBoard();
+    this.duelMatchId = null;
+    this.duelRoundRunning = 0;
+    this.reportedRound = 0;
+    this.pendingOutcome = null;
+    const solo = this.savedSolo;
+    this.savedSolo = null;
+    this.setState({
+      screen: 'menu',
+      duelMatch: null,
+      duelError: null,
+      paused: false,
+      incomingCount: 0,
+      width: solo?.width ?? this.state.width,
+      viruses: solo?.viruses ?? this.state.viruses,
+      speed: solo?.speed ?? this.state.speed,
+    });
+  }
+
   // ── loop ──────────────────────────────────────────────────────────────
   loop(ts: number) {
     this.raf = requestAnimationFrame(this.loop);
@@ -776,6 +1102,13 @@ export default class App extends React.Component<object, State> {
             }
           }
         }
+      } else if (this.phase === 'incoming-warning') {
+        if (ts >= this.incomingFlashUntil) {
+          this.phase = 'idle';
+          this.applyIncomingBlocks();
+        }
+      } else if (this.phase === 'incoming') {
+        this.advanceIncomingBlocks(ts);
       }
     }
     this.particles = this.particles.filter(p => (p.life -= 1) > 0);
@@ -852,6 +1185,10 @@ export default class App extends React.Component<object, State> {
     if (this.pill) {
       for (const c of this.pillCells()) if (c.y >= 0) this.sprite(o, c.x * 8, c.y * 8, c.c, false);
     }
+    for (const drop of this.incomingDrops) {
+      if (drop.y + 1 < 0) continue;
+      this.sprite(o, drop.x * 8, Math.round(drop.y * 8), drop.c, false);
+    }
     for (const p of this.particles) {
       o.fillStyle = this.LIGHT[p.c]; o.fillRect(p.x | 0, p.y | 0, 2, 2);
     }
@@ -891,6 +1228,12 @@ export default class App extends React.Component<object, State> {
       ctx.moveTo(boardX, py); ctx.lineTo(boardX + dw, py);
     }
     ctx.stroke();
+
+    if (this.phase === 'incoming-warning' && this.state.screen === 'play') {
+      ctx.strokeStyle = 'rgba(194,58,58,0.9)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(boardX + 2, 2, dw - 4, dh - 4);
+    }
 
     this.cellPx = scale * 8;
   }
@@ -1126,7 +1469,13 @@ export default class App extends React.Component<object, State> {
         {/* Header */}
         <div className="bitdrop-chrome-header">
           <div style={{ fontSize: 13, lineHeight: 1 }}>score: {s.score}</div>
-          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>targets {s.left}</div>
+          <div style={{ fontSize: 9, color: '#d9cf4a', lineHeight: 1 }}>
+            targets {s.left}
+            {s.duelMatch && (isPlaying || s.screen === 'duel')
+              ? ` · ${s.duelMatch.wins[0]}–${s.duelMatch.wins[1]} R${s.duelMatch.round}`
+              : ''}
+            {s.incomingCount > 0 ? ` · IN ${s.incomingCount}` : ''}
+          </div>
           {isPlaying && (
             <button onClick={() => this.setState({ paused: !s.paused })} style={{ fontFamily: 'inherit', fontSize: 10, background: '#3a3a3e', color: '#ffffff', border: '2px solid #6e6e72', padding: '7px 11px', cursor: 'pointer' }}>
               PAUSE
@@ -1206,13 +1555,22 @@ export default class App extends React.Component<object, State> {
                     </button>
                   </div>
 
-                  {FLAGS.enableLeaderboard && (
-                    <button className="bitdrop-btn bitdrop-btn-high" onClick={() => this.openScores('menu')}>
-                      HIGH SCORES
-                    </button>
+                  {(FLAGS.enableLeaderboard || redditDuelEnabled()) && (
+                    <div className="bitdrop-menu-actions-row">
+                      {FLAGS.enableLeaderboard && (
+                        <button className="bitdrop-btn bitdrop-btn-high" style={{ flex: 1 }} onClick={() => this.openScores('menu')}>
+                          HIGH SCORES
+                        </button>
+                      )}
+                      {redditDuelEnabled() && (
+                        <button className="bitdrop-btn bitdrop-btn-duel" style={{ flex: 1 }} onClick={() => this.openDuel()}>
+                          1v1 DUEL
+                        </button>
+                      )}
+                    </div>
                   )}
 
-                  <CompeteStub />
+                  {!redditDuelEnabled() && <CompeteStub />}
                 </div>
 
                 <div className="bitdrop-menu-meta">
@@ -1232,6 +1590,44 @@ export default class App extends React.Component<object, State> {
 
           {/* Learn / scoring page */}
           {s.screen === 'learn' && <LearnPage onBack={() => this.setState({ screen: 'menu' })} />}
+
+          {/* Reddit 1v1 lobby / between rounds. Not the web text-link duel. */}
+          {s.screen === 'duel' && redditDuelEnabled() && (
+            s.duelMatch ? (
+              <DuelMatch
+                match={s.duelMatch}
+                error={s.duelError}
+                busy={s.duelBusy}
+                onReady={() => { void this.readyDuel(); }}
+                onForfeit={() => { void this.forfeitDuel(); }}
+                onMenu={() => this.leaveDuel()}
+                onRetry={this.pendingOutcome ? () => this.retryDuelReport() : undefined}
+              />
+            ) : (
+              <DuelLobby
+                settings={{ width: s.width, viruses: s.viruses, speed: s.speed }}
+                onBack={() => this.setState({ screen: 'menu' })}
+                onPlay={(match) => this.joinDuel(match)}
+                onWins={() => { void this.openDuelWins(); }}
+              />
+            )
+          )}
+
+          {s.screen === 'duelwins' && redditDuelEnabled() && (
+            <div className="bitdrop-scores-overlay" data-testid="bitdrop-duel-wins">
+              <div className="bitdrop-scores-panel">
+                <DuelWinsBoard
+                  month={s.duelMonth || 'UTC'}
+                  rows={s.duelWins}
+                  you={s.duelYou}
+                  onBack={() => this.setState({ screen: 'duel' })}
+                />
+                {s.duelError && (
+                  <div style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, color: '#e07070' }}>{s.duelError}</div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* High score board */}
           {s.screen === 'scores' && FLAGS.enableLeaderboard && (
@@ -1285,9 +1681,12 @@ export default class App extends React.Component<object, State> {
                 <button onClick={() => this.setState({ paused: false })} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   RESUME
                 </button>
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }}
+                <button onClick={() => {
+                  if (this.duelMatchId) void this.forfeitDuel();
+                  else { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }
+                }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
-                  QUIT
+                  {this.duelMatchId ? 'FORFEIT' : 'QUIT'}
                 </button>
               </div>
             </div>
