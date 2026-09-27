@@ -17,7 +17,7 @@ export type BotEvent =
   | { type: 'attack'; colors: number[] }
   | { type: 'round'; outcome: 'win' | 'lose' };
 
-type Pill = { x: number; y: number; dir: number; a: number; b: number };
+type Block = { x: number; y: number; dir: number; a: number; b: number };
 
 export type BotHooks = {
   cols: number;
@@ -47,7 +47,7 @@ export function botAttackRate(skill: number): number {
   return 0.2 + skillT(skill) * 0.8;
 }
 
-/** Milliseconds between bot pills. Skill sets the pace. Board speed only nudges it. */
+/** Milliseconds between bot blocks. Skill sets the pace. Board speed only nudges it. */
 export function botPaceMs(skill: number, boardSpeed: number): number {
   const speed = Math.max(1, Math.min(9, Math.round(boardSpeed) || 1));
   const base = 1800 - skillT(skill) * 1520;
@@ -58,7 +58,7 @@ function cloneGrid(grid: BotGrid): BotGrid {
   return grid.map((row) => row.map((cell) => (cell ? { c: cell.c, t: cell.t } : null)));
 }
 
-function pillCells(p: Pill): { x: number; y: number; c: number }[] {
+function blockCells(p: Block): { x: number; y: number; c: number }[] {
   const swap = p.dir >= 2;
   const dx = p.dir % 2 === 0 ? 1 : 0;
   const dy = p.dir % 2 === 0 ? 0 : -1;
@@ -76,12 +76,12 @@ function occupied(grid: BotGrid, x: number, y: number): boolean {
   return grid[y]![x] != null;
 }
 
-function fits(grid: BotGrid, p: Pill): boolean {
-  return pillCells(p).every((c) => !occupied(grid, c.x, c.y));
+function fits(grid: BotGrid, p: Block): boolean {
+  return blockCells(p).every((c) => !occupied(grid, c.x, c.y));
 }
 
-function lockPill(grid: BotGrid, p: Pill): void {
-  for (const cell of pillCells(p)) {
+function lockBlock(grid: BotGrid, p: Block): void {
+  for (const cell of blockCells(p)) {
     if (cell.y >= 0 && cell.y < grid.length && cell.x >= 0 && cell.x < (grid[0]?.length ?? 0)) {
       grid[cell.y]![cell.x] = { c: cell.c, t: false };
     }
@@ -204,8 +204,8 @@ export function scoreBotPlacement(stats: {
   return stats.targetsCleared * 200 + stats.attacks * 40 - stats.holes * 12 - stats.height * 3;
 }
 
-function dropPill(grid: BotGrid, dir: number, x: number, a: number, b: number): Pill | null {
-  const start: Pill = { x, y: 0, dir, a, b };
+function dropBlock(grid: BotGrid, dir: number, x: number, a: number, b: number): Block | null {
+  const start: Block = { x, y: 0, dir, a, b };
   if (!fits(grid, start)) return null;
   let y = 0;
   while (fits(grid, { x, y: y + 1, dir, a, b })) y += 1;
@@ -237,8 +237,8 @@ export class BotBoard {
     }
   }
 
-  /** One decision: apply queued garbage, then hard-drop the best pill. */
-  playPill(): BotEvent[] {
+  /** One decision: apply queued garbage, then hard-drop the best block. */
+  playBlock(): BotEvent[] {
     if (!this.alive) return [];
     const events: BotEvent[] = [];
     if (this.garbage.length) {
@@ -262,7 +262,7 @@ export class BotBoard {
       events.push({ type: 'round', outcome: 'lose' });
       return events;
     }
-    lockPill(this.grid, move);
+    lockBlock(this.grid, move);
     events.push(...this.finishResolve());
     return events;
   }
@@ -286,20 +286,20 @@ export class BotBoard {
     return this.rand() < 0.15 ? RAINBOW : (this.rand() * 4) | 0;
   }
 
-  private bestMove(a: number, b: number): Pill | null {
-    const ranked: { pill: Pill; score: number }[] = [];
+  private bestMove(a: number, b: number): Block | null {
+    const ranked: { block: Block; score: number }[] = [];
     const dirs = this.skill >= 7 ? [0, 1, 2, 3] : this.skill >= 4 ? [0, 1, 2] : [0, 2];
     const step = this.skill >= 8 ? 1 : this.skill >= 4 ? 1 : 2;
     for (const dir of dirs) {
       for (let x = 0; x < this.cols; x += step) {
-        const dropped = dropPill(this.grid, dir, x, a, b);
+        const dropped = dropBlock(this.grid, dir, x, a, b);
         if (!dropped) continue;
         const copy = cloneGrid(this.grid);
-        lockPill(copy, dropped);
+        lockBlock(copy, dropped);
         const resolved = resolveBoard(copy);
         const pile = pileStats(copy);
         ranked.push({
-          pill: dropped,
+          block: dropped,
           score: scoreBotPlacement({
             targetsCleared: resolved.targetsCleared,
             attacks: resolved.colors.length,
@@ -314,9 +314,9 @@ export class BotBoard {
     const best = ranked[0]!;
     if (ranked.length > 1 && this.rand() < botMistakeRate(this.skill)) {
       const worse = ranked.slice(1);
-      return worse[Math.floor(this.rand() * worse.length)]!.pill;
+      return worse[Math.floor(this.rand() * worse.length)]!.block;
     }
-    return best.pill;
+    return best.block;
   }
 
   private placeTargets(want: number): number {

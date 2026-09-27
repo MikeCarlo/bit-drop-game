@@ -14,7 +14,7 @@ test('a color-2 line with a target sends garbage and wins the round', () => {
   bot.grid[11]![1] = { c: 2, t: false };
   bot.grid[11]![2] = { c: 2, t: false };
   bot.targetsLeft = 1;
-  const events = bot.playPill();
+  const events = bot.playBlock();
   const attack = events.find((e) => e.type === 'attack');
   const round = events.find((e) => e.type === 'round');
   assert.ok(attack && attack.type === 'attack' && attack.colors.includes(2));
@@ -28,7 +28,7 @@ test('garbage with no landing cell loses the round', () => {
     for (let x = 0; x < 4; x++) bot.grid[y]![x] = { c: 1, t: false };
   }
   bot.queueGarbage([0]);
-  const events = bot.playPill();
+  const events = bot.playBlock();
   assert.deepEqual(events, [{ type: 'round', outcome: 'lose' }]);
 });
 
@@ -48,7 +48,7 @@ test('skill 1 is slow and sloppy; skill 10 is fast and sends every clear', () =>
   easy.grid[11]![2] = { c: 2, t: false };
   easy.grid[11]![3] = { c: 2, t: false };
   easy.targetsLeft = 1;
-  const easyEvents = easy.playPill();
+  const easyEvents = easy.playBlock();
   assert.equal(easyEvents.some((e) => e.type === 'attack'), false);
   assert.deepEqual(easyEvents.find((e) => e.type === 'round'), { type: 'round', outcome: 'win' });
 
@@ -64,7 +64,7 @@ test('skill 1 is slow and sloppy; skill 10 is fast and sends every clear', () =>
   hard.grid[11]![2] = { c: 2, t: false };
   hard.grid[11]![3] = { c: 2, t: false };
   hard.targetsLeft = 1;
-  const hardEvents = hard.playPill();
+  const hardEvents = hard.playBlock();
   const attack = hardEvents.find((e) => e.type === 'attack');
   assert.ok(attack && attack.type === 'attack' && attack.colors.includes(2));
 });

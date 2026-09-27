@@ -35,22 +35,22 @@ import { DuelWinsBoard } from './ui/DuelWinsBoard';
 import { HighScoreBoard } from './ui/HighScoreBoard';
 
 // ── types ──────────────────────────────────────────────────────────────────
-// dx/dy: relative offset to this cell's linked pill partner (undefined = single segment)
+// dx/dy: relative offset to this cell's linked block partner (undefined = single segment)
 interface Cell { c: number; t: boolean; dx?: number; dy?: number; }
 type Grid = (Cell | null)[][];
-interface Pill { x: number; y: number; dir: number; a: number; b: number; }
+interface Block { x: number; y: number; dir: number; a: number; b: number; }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; c: number; }
 // Trail left by a hard-drop: two column indices + row range + fade timer
 interface DropFlash { cols: number[]; yTop: number; yBot: number; life: number; }
 
 // A tutorial step: prompt text, a goal that completes it, optional board setup
-// and a scripted pill. Clear-type goals retry (board resets) until achieved.
+// and a scripted block. Clear-type goals retry (board resets) until achieved.
 interface TutStep {
   title: string;
   text: string;
   goal: 'move' | 'rotate' | 'drop' | 'clear' | 'clearTarget' | 'clearBig' | 'chain' | 'clearRainbow';
   need?: number;                                  // action count for move/rotate/drop
-  pill?: [number, number];                        // scripted pill colors
+  block?: [number, number];                        // scripted block colors
   setup?: (g: Grid, cols: number, rows: number) => number; // builds board, returns target count
 }
 
@@ -129,7 +129,7 @@ export default class App extends React.Component<object, State> {
   grid: Grid = [];
   rows = 16;
   cols = 10;
-  pill: Pill | null = null;
+  block: Block | null = null;
   phase: 'idle' | 'fall' | 'flash' | 'grav' | 'incoming' | 'incoming-warning' = 'idle';
   /** Reddit 1v1. Solo play leaves these idle. */
   duelLive = false;
@@ -175,23 +175,23 @@ export default class App extends React.Component<object, State> {
   tutCount = 0;       // actions performed toward the current step's `need`
   tutAdvance = false; // set when a clear-goal step is achieved; consumed on settle
   TUT: TutStep[] = [
-    { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the pill left and right. move it 3 times!', goal: 'move', need: 3, pill: [0, 1] },
-    { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, pill: [2, 3] },
-    { title: 'HARD DROP', text: 'swipe ▼ fast to slam the pill straight down.', goal: 'drop', need: 1, pill: [1, 2] },
+    { title: 'MOVE', text: 'drag ◀▶ anywhere to slide the block left and right. move it 3 times!', goal: 'move', need: 3, block: [0, 1] },
+    { title: 'ROTATE', text: 'tap anywhere to rotate — each tap rotates once. (hold + 2nd finger works too, or ▲/space). rotate twice!', goal: 'rotate', need: 2, block: [2, 3] },
+    { title: 'HARD DROP', text: 'swipe ▼ fast to slam the block straight down.', goal: 'drop', need: 1, block: [1, 2] },
     {
-      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red pill next to the 3 reds!', goal: 'clear', pill: [0, 0],
+      title: 'MATCH 4', text: 'line up 4 of a color to clear it. points come only when a TARGET is in that drop — this demo has none, so it scores 0. drop the red block next to the 3 reds!', goal: 'clear', block: [0, 0],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false }; return 0; },
     },
     {
-      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', pill: [3, 3],
+      title: 'TARGET SQUARES', text: 'squares with a face are TARGETS — 50 pts each, and they unlock the drop\'s score. clear them all to win a level. match the greens!', goal: 'clearTarget', block: [3, 3],
       setup: (g, _c, r) => { g[r - 1][0] = { c: 3, t: true }; g[r - 1][1] = { c: 3, t: false }; return 1; },
     },
     {
-      title: 'BIG LINES', text: 'longer lines multiply the points: 5 = x2, 6 = x3, 7 = x4, 8+ = x5. make a line of SIX blues!', goal: 'clearBig', pill: [1, 1],
+      title: 'BIG LINES', text: 'longer lines multiply the points: 5 = x2, 6 = x3, 7 = x4, 8+ = x5. make a line of SIX blues!', goal: 'clearBig', block: [1, 1],
       setup: (g, _c, r) => { for (let x = 0; x < 4; x++) g[r - 1][x] = { c: 1, t: false }; return 0; },
     },
     {
-      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', pill: [0, 0],
+      title: 'CHAIN REACTIONS', text: 'all match-4+ lines in one drop (including cascades) multiply the drop\'s base. 2 lines = x2. this board has no target, so it still scores 0. complete the red line and watch the yellow fall!', goal: 'chain', block: [0, 0],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 2, t: false }; g[r - 1][1] = { c: 2, t: false }; g[r - 1][2] = { c: 2, t: false };
         g[r - 1][3] = { c: 0, t: false }; g[r - 1][4] = { c: 0, t: false }; g[r - 1][5] = { c: 0, t: false };
@@ -200,7 +200,7 @@ export default class App extends React.Component<object, State> {
       },
     },
     {
-      title: 'RAINBOW BLOCK', text: 'the rainbow block matches ANY color! drop it next to the 3 reds to clear them — rainbow counts as red here!', goal: 'clearRainbow', pill: [4, 2],
+      title: 'RAINBOW BLOCK', text: 'the rainbow block matches ANY color! drop it next to the 3 reds to clear them — rainbow counts as red here!', goal: 'clearRainbow', block: [4, 2],
       setup: (g, _c, r) => {
         g[r - 1][0] = { c: 0, t: false }; g[r - 1][1] = { c: 0, t: false }; g[r - 1][2] = { c: 0, t: false };
         return 0;
@@ -444,7 +444,7 @@ export default class App extends React.Component<object, State> {
   setupTutStep(i: number) {
     if (i >= this.TUT.length) { // finished!
       localStorage.setItem('bitdrop-tut', '1');
-      this.phase = 'idle'; this.pill = null;
+      this.phase = 'idle'; this.block = null;
       this.setState({ tutStep: this.TUT.length });
       this.arp([523, 659, 784, 1047, 784, 1047], 90, 0.14);
       return;
@@ -456,8 +456,8 @@ export default class App extends React.Component<object, State> {
     this.particles = []; this.flash = []; this.chain = 1; this.dropScore = idleDropScore();
     this.winPending = false; this.grounded = false;
     this.setState({ tutStep: i, left: targets });
-    const [a, b] = step.pill || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
-    this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+    const [a, b] = step.block || [(Math.random() * 4) | 0, (Math.random() * 4) | 0];
+    this.block = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
     this.fastDrop = false;
     this.phase = 'fall'; this.lastFall = performance.now();
   }
@@ -470,7 +470,7 @@ export default class App extends React.Component<object, State> {
     this.tutCount++;
     this.forceUpdate(); // progress counter lives outside React state
     if (this.tutCount >= (step.need || 1)) {
-      // move/rotate advance in place (pill keeps falling); drop advances on next spawn
+      // move/rotate advance in place (block keeps falling); drop advances on next spawn
       if (goal === 'move' || goal === 'rotate') {
         this.setState({ tutStep: this.state.tutStep + 1 });
         this.tutCount = 0;
@@ -527,22 +527,22 @@ export default class App extends React.Component<object, State> {
   }
 
   spawn() {
-    // Live website: flush the previous drop before the next pill (or tut retry).
+    // Live website: flush the previous drop before the next block (or tut retry).
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
     if (this.duelLive) {
-      // Same gap the live duel uses: dump queued garbage before the next pill.
+      // Same gap the live duel uses: dump queued garbage before the next block.
       if (!this.applyIncomingBlocks() || this.checkClears()) return;
     }
     if (this.isTut()) {
       const i = this.state.tutStep;
       if (this.tutAdvance) { this.setupTutStep(i + 1); return; }  // step achieved → next
       if (this.TUT[i].setup) { this.setupTutStep(i); return; }     // clear-goal missed → retry
-      // control steps: respawn the scripted pill
-      const [a, b] = this.TUT[i].pill!;
-      this.pill = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
+      // control steps: respawn the scripted block
+      const [a, b] = this.TUT[i].block!;
+      this.block = { x: (this.cols >> 1) - 1, y: 0, dir: 0, a, b };
       this.fastDrop = false; this.grounded = false;
-      const [t1, t2] = this.pillCells();
+      const [t1, t2] = this.blockCells();
       if (this.at(t1.x, t1.y) || this.at(t2.x, t2.y)) { this.setupTutStep(i); return; } // board jammed → reset step
       this.phase = 'fall'; this.lastFall = performance.now();
       return;
@@ -550,10 +550,10 @@ export default class App extends React.Component<object, State> {
     const x = (this.cols >> 1) - 1;
     const a = this.randColor();
     const b = this.randColor(a === this.RAINBOW); // never both rainbow
-    this.pill = { x, y: 0, dir: 0, a, b };
+    this.block = { x, y: 0, dir: 0, a, b };
     this.fastDrop = false; this.grounded = false;
-    const [c1, c2] = this.pillCells();
-    if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.pill = null; this.gameOver(false); return; }
+    const [c1, c2] = this.blockCells();
+    if (this.at(c1.x, c1.y) || this.at(c2.x, c2.y)) { this.block = null; this.gameOver(false); return; }
     this.phase = 'fall'; this.lastFall = performance.now();
   }
 
@@ -563,31 +563,31 @@ export default class App extends React.Component<object, State> {
     return this.grid[y][x];
   }
 
-  pillCells(p?: Pill): { x: number; y: number; c: number }[] {
-    p = p || this.pill!;
+  blockCells(p?: Block): { x: number; y: number; c: number }[] {
+    p = p || this.block!;
     const swap = p.dir >= 2, dx = p.dir % 2 === 0 ? 1 : 0, dy = p.dir % 2 === 0 ? 0 : -1;
     return [{ x: p.x, y: p.y, c: swap ? p.b : p.a }, { x: p.x + dx, y: p.y + dy, c: swap ? p.a : p.b }];
   }
 
-  fits(p: Pill): boolean {
-    return this.pillCells(p).every(c => !this.at(c.x, c.y));
+  fits(p: Block): boolean {
+    return this.blockCells(p).every(c => !this.at(c.x, c.y));
   }
 
   move(dx: number): boolean {
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return false;
-    const p = { ...this.pill, x: this.pill.x + dx };
-    if (this.fits(p)) { this.pill = p; this.beep(200, 0.03, 'square', 0.05); this.tutHit('move'); return true; }
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return false;
+    const p = { ...this.block, x: this.block.x + dx };
+    if (this.fits(p)) { this.block = p; this.beep(200, 0.03, 'square', 0.05); this.tutHit('move'); return true; }
     return false;
   }
 
   rotate() {
     const now = performance.now();
     if (shouldDebounceRotate(now, this.lastRotateAt)) return;
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return;
     for (const kick of [0, -1, 1]) {
-      const p = { ...this.pill, dir: (this.pill.dir + 1) % 4, x: this.pill.x + kick };
+      const p = { ...this.block, dir: (this.block.dir + 1) % 4, x: this.block.x + kick };
       if (this.fits(p)) {
-        this.pill = p;
+        this.block = p;
         this.lastRotateAt = now;
         this.beep(660, 0.05);
         this.tutHit('rotate');
@@ -600,16 +600,16 @@ export default class App extends React.Component<object, State> {
   }
 
   hardDrop() {
-    if (this.phase !== 'fall' || !this.pill || this.state.paused) return;
-    const startY = this.pill.y;
-    let p = this.pill;
+    if (this.phase !== 'fall' || !this.block || this.state.paused) return;
+    const startY = this.block.y;
+    let p = this.block;
     while (true) {
       const n = { ...p, y: p.y + 1 };
       if (this.fits(n)) p = n; else break;
     }
     // Only trigger effects when the piece actually travelled some distance
     if (p.y > startY) {
-      const cells = this.pillCells(p);
+      const cells = this.blockCells(p);
       this.dropFlashes.push({
         cols: cells.map(c => c.x),
         yTop: Math.max(0, startY),
@@ -619,15 +619,15 @@ export default class App extends React.Component<object, State> {
       this.dropSound();
     }
     this.tutHit('drop');
-    this.pill = p; this.lock();
+    this.block = p; this.lock();
   }
 
   lock() {
-    const [a, b] = this.pillCells();
+    const [a, b] = this.blockCells();
     const bothOn = a.y >= 0 && b.y >= 0;
     if (a.y >= 0) this.grid[a.y][a.x] = { c: a.c, t: false, ...(bothOn ? { dx: b.x - a.x, dy: b.y - a.y } : {}) };
     if (b.y >= 0) this.grid[b.y][b.x] = { c: b.c, t: false, ...(bothOn ? { dx: a.x - b.x, dy: a.y - b.y } : {}) };
-    this.pill = null; this.chain = 1; this.dropScore = idleDropScore();
+    this.block = null; this.chain = 1; this.dropScore = idleDropScore();
     this.beep(150, 0.07, 'triangle', 0.18);
     if (!this.checkClears()) this.spawn();
   }
@@ -722,7 +722,7 @@ export default class App extends React.Component<object, State> {
     // Which cells may fall one row this tick? A cell can fall only if:
     //  - it isn't a fixed target square,
     //  - the space below is empty OR also falling,
-    //  - AND its linked pill partner (if any) can fall too.
+    //  - AND its linked block partner (if any) can fall too.
     const can: boolean[][] = Array.from({ length: this.rows }, () => Array(this.cols).fill(false));
     for (let y = this.rows - 2; y >= 0; y--) {
       for (let x = 0; x < this.cols; x++) {
@@ -765,7 +765,7 @@ export default class App extends React.Component<object, State> {
   gameOver(won: boolean) {
     this.applyFlush();
     this.dropScore = { ...this.dropScore, chainHadTarget: false };
-    this.phase = 'idle'; this.pill = null;
+    this.phase = 'idle'; this.block = null;
     if (this.duelLive) {
       this.duelLive = false;
       this.incomingBlocks = [];
@@ -922,7 +922,7 @@ export default class App extends React.Component<object, State> {
   haltDuelBoard() {
     this.duelLive = false;
     this.phase = 'idle';
-    this.pill = null;
+    this.block = null;
     this.incomingBlocks = [];
     this.incomingDrops = [];
     this.fastDrop = false;
@@ -949,7 +949,7 @@ export default class App extends React.Component<object, State> {
 
   tickPcBot() {
     if (!this.pcMode || !this.duelLive || !this.pcBot || this.state.paused || this.state.screen !== 'play') return;
-    const events = this.pcBot.playPill();
+    const events = this.pcBot.playBlock();
     const left = this.pcBot?.targetsLeft ?? 0;
     if (left !== this.state.pcLeft) this.setState({ pcLeft: left });
     for (const ev of events) {
@@ -1240,7 +1240,7 @@ export default class App extends React.Component<object, State> {
     this.raf = requestAnimationFrame(this.loop);
     const playing = this.state.screen === 'play' && !this.state.paused;
     if (playing) {
-      if (this.phase === 'fall' && this.pill) {
+      if (this.phase === 'fall' && this.block) {
         // If grounded, wait for lock delay to expire before locking
         if (this.grounded) {
           if (ts > this.lockAt) { this.grounded = false; this.lock(); }
@@ -1249,9 +1249,9 @@ export default class App extends React.Component<object, State> {
           const iv = this.fastDrop ? 45 : this.isTut() ? 1400 : 1000 - this.state.speed * 90;
           if (ts - this.lastFall > iv) {
             this.lastFall = ts;
-            const p = { ...this.pill, y: this.pill.y + 1 };
+            const p = { ...this.block, y: this.block.y + 1 };
             if (this.fits(p)) {
-              this.pill = p;
+              this.block = p;
             } else {
               // Piece hit the floor — start lock delay
               this.grounded = true;
@@ -1351,8 +1351,8 @@ export default class App extends React.Component<object, State> {
         this.sprite(o, x * 8, y * 8, cell.c, cell.t);
       }
     }
-    if (this.pill) {
-      for (const c of this.pillCells()) if (c.y >= 0) this.sprite(o, c.x * 8, c.y * 8, c.c, false);
+    if (this.block) {
+      for (const c of this.blockCells()) if (c.y >= 0) this.sprite(o, c.x * 8, c.y * 8, c.c, false);
     }
     for (const drop of this.incomingDrops) {
       if (drop.y + 1 < 0) continue;
@@ -1866,7 +1866,7 @@ export default class App extends React.Component<object, State> {
                 <button onClick={() => { this.setState({ tutStep: -1 }); this.startGame(); }} style={{ fontFamily: 'inherit', fontSize: 12, background: '#2ea043', color: '#ffffff', border: '4px solid #ffffff', padding: 14, cursor: 'pointer' }}>
                   PLAY NOW
                 </button>
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', tutStep: -1, paused: false }); }}
+                <button onClick={() => { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', tutStep: -1, paused: false }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   MENU
                 </button>
@@ -1885,7 +1885,7 @@ export default class App extends React.Component<object, State> {
                 <button onClick={() => {
                   if (this.pcMode) this.leaveDuel();
                   else if (this.duelMatchId) void this.forfeitDuel();
-                  else { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }
+                  else { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', paused: false, tutStep: -1 }); }
                 }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   {this.pcMode ? 'QUIT' : this.duelMatchId ? 'FORFEIT' : 'QUIT'}
@@ -1917,7 +1917,7 @@ export default class App extends React.Component<object, State> {
                     HIGH SCORES
                   </button>
                 )}
-                <button onClick={() => { this.phase = 'idle'; this.pill = null; this.setState({ screen: 'menu', paused: false }); }}
+                <button onClick={() => { this.phase = 'idle'; this.block = null; this.setState({ screen: 'menu', paused: false }); }}
                   style={{ fontFamily: 'inherit', fontSize: 12, background: '#3a3a3e', color: '#ffffff', border: '4px solid #6e6e72', padding: 14, cursor: 'pointer' }}>
                   SETTINGS
                 </button>

@@ -10,7 +10,7 @@ The Reddit playtest build (`artifacts/devvit-bit-drop`) bakes `PLATFORM=reddit` 
 2. The server puts them on the install’s open-seat queue (`bitdrop:duel:queue`) and the lobby shows a running wait timer.
 3. When a second player is waiting, the server pairs them. The player who queued first is the host: their board settings are the match. Both clients see the match on the next `GET /api/duel/state` (about every 1s in the lobby, then `GET /api/duel/match/:id` about every 800ms). Realtime on the post is best-effort.
 4. Each round is a normal clear-the-targets board. Clearing every target reports a round **win**. Topping out (or garbage with nowhere to land) reports a **loss**. First decisive report wins the round: a win awards that player, a loss awards the opponent. First to **3** round wins takes the match (best of 5).
-5. Garbage matches the live `type:"attack"` payload as closely as the shared scanner allows: each colored match-4+ line sends that line’s color (`0–3`). The server queues it for the opponent. Between pills, those blocks fall in as non-target cells (shuffled columns, stacked from the bottom). A full ceiling loses the round.
+5. Garbage matches the live `type:"attack"` payload as closely as the shared scanner allows: each colored match-4+ line sends that line’s color (`0–3`). The server queues it for the opponent. Between falling blocks, garbage cells fall in as non-target cells (shuffled columns, stacked from the bottom). A full ceiling loses the round.
 6. After a round that does not end the match, both players tap **NEXT ROUND**. Forfeit gives the match to the opponent.
 7. First to 3 opens a match-over screen: **YOU WIN** or **YOU LOSE**, the set score with your rounds first (3–1), and who you faced (their username, or **BOT · SKILL N**). **PLAY AGAIN** starts another bot match (new skill) or returns a human match to the queue. **FIND A CHALLENGER** opens the waiting room. **MENU** leaves. A single round does not use this screen.
 
@@ -33,10 +33,10 @@ The PC is a local heuristic (`src/duel/botBoard.ts`). **START NOW** rolls one sk
 
 | Skill | What the player feels |
 | --- | --- |
-| 1 | Slow pills, bad placements most of the time, garbage only now and then, and a narrow search (two rotations, every other column). A new player can win. |
-| 10 | Fast pills, the best placement almost every time, every colored clear sent as garbage, and a full search of columns and rotations. |
+| 1 | Slow blocks, bad placements most of the time, garbage only now and then, and a narrow search (two rotations, every other column). A new player can win. |
+| 10 | Fast blocks, the best placement almost every time, every colored clear sent as garbage, and a full search of columns and rotations. |
 
-What scales with skill: reaction delay, mistake rate, how often a clear becomes garbage, and how wide the placement search is. Board speed only nudges the delay. Skill 1 waits about 1.8s between pills. Skill 10 waits about a quarter of a second.
+What scales with skill: reaction delay, mistake rate, how often a clear becomes garbage, and how wide the placement search is. Board speed only nudges the delay. Skill 1 waits about 1.8s between blocks. Skill 10 waits about a quarter of a second.
 
 The bot board stores wins only. It does not store the skill that was faced.
 

@@ -1,4 +1,4 @@
-/** Bit Drop brand tiles: square beveled blocks only (no pills, no text). */
+/** Bit Drop brand tiles: square beveled blocks only (no two-cell pieces, no text). */
 
 export const BRAND_FILL = ['#c23a3a', '#2f4bc9', '#d9cf4a', '#2ea043'] as const;
 export const BRAND_LIGHT = ['#e07070', '#6f83e8', '#efe88e', '#6cc97c'] as const;
@@ -6,7 +6,7 @@ export const BRAND_DARK = ['#7e2222', '#1d2f85', '#9a922c', '#1c6b2c'] as const;
 
 type Block = { x: number; y: number; s: number; c: 0 | 1 | 2 | 3 };
 
-/** Tile layout: the four-color icon motif plus scattered singles. Gaps keep squares from reading as pills. */
+/** Tile layout: the four-color icon motif plus scattered singles. Gaps keep squares from joining into one piece. */
 const TILE_BLOCKS: Block[] = [
   { x: 10, y: 14, s: 28, c: 0 },
   { x: 46, y: 14, s: 28, c: 1 },

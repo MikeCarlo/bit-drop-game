@@ -44,7 +44,7 @@ Confirmed in `index-CWLN84aj.js` (`doClear`, `_flushDrop`, `lock`, `spawn`, `gam
    - `ghostMul` is `0.65` when **GHOST BLOCK** is on (live default), else `1`. Label in UI: “-35% score when on”.
 3. Distinct H/V match-4+ runs increment `dropRunCount` (a cross / two lines in one clear adds 2). Cascades **add** to the same counters. Live JS counts any flashed neighbor pair (so two side-by-side vertical 4s become 6). Shared `App` counts colored 4+ scans from `checkClears` (that case is 2).
 4. **`this.chain` is incremented for SFX + the tutorial “chain” goal only.** It is **not** multiplied into points on the live site.
-5. When the sequence ends (`spawn` next pill, or `gameOver`):
+5. When the sequence ends (`spawn` next block, or `gameOver`):
 
    ```
    _flushDrop():
@@ -53,7 +53,7 @@ Confirmed in `index-CWLN84aj.js` (`doClear`, `_flushDrop`, `lock`, `spawn`, `gam
    ```
 
    A drop that only clears regular pieces scores **0**. A cascade that later hits a target awards **the whole sequence** (earlier no-target clears included) × the total line count.
-6. `lock()` of a new pill resets `chain = 1`, `chainHadTarget`, `dropBasePoints`, `dropRunCount`.
+6. `lock()` of a new block resets `chain = 1`, `chainHadTarget`, `dropBasePoints`, `dropRunCount`.
 
 Worked example (same 840 as LearnPage, ghost **off**): 6-in-a-row, two targets, two lines in the drop:
 
@@ -94,7 +94,7 @@ No. The **live website already target-gates** and has done so since that Sep-2 b
 | Settings (on home) | SETTINGS + | BOARD WIDTH 8–24, TARGET SQUARES 4–40, SPEED 1–9, SOUND, **GHOST BLOCK** (default on, −35% score). |
 | Scoring / Learn | SCORING | Same `LearnPage` structure as GitHub (match 4, targets, big lines, chains, 840 example, finger demos). Live copy still omitted the target-gate. |
 | Tutorial | TUTORIAL or first START if `bitdrop-tut` unset | 8 steps: MOVE, ROTATE, HARD DROP, MATCH 4, TARGET SQUARES, BIG LINES, CHAIN REACTIONS, RAINBOW BLOCK. Skip writes `bitdrop-tut=1`. Complete → PLAY NOW / MENU. |
-| Play (solo) | START / NEXT LEVEL / RESUME | HUD: `score`, `targets {left}`, **LVL {n}**, PAUSE. Next-pill preview. Ghost landing outline if ghost on. Score popups on flush. |
+| Play (solo) | START / NEXT LEVEL / RESUME | HUD: `score`, `targets {left}`, **LVL {n}**, PAUSE. Next-block preview. Ghost landing outline if ghost on. Score popups on flush. |
 | Pause | PAUSE or `p` | RESUME, SOUND FX, **MUSIC**, QUIT. (Home settings do not expose music; pause does.) |
 | Round win | All targets cleared | **ROUND SUMMARY** (base pts, bonus pts, multipliers). **NEXT LEVEL ▶**. Score **carries**. Not “LEVEL CLEAR / PLAY AGAIN”. |
 | Game over | Spawn blocked | LAST LEVEL, score, best, best level, PLAY AGAIN, share / challenge a friend. |
@@ -129,7 +129,7 @@ Fall interval: `fastDrop ? 45 : tutorial ? 1400 : 1000 - speed * 90`. Lock delay
 
 - Win a **round** when `left <= 0` after a clear (`winPending`), then gravity finishes.
 - `nextLevel()`: `level + 1`, target count = `viruses + (level - 1) * 2`, rebuild board, **keep score**, reset drop accumulators.
-- Lose: next pill overlaps locked cells (`spawn` → `gameOver(false)`).
+- Lose: next block overlaps locked cells (`spawn` → `gameOver(false)`).
 - No infinite “one board” — progression is the product loop.
 
 ### Persistence (live `localStorage`)
@@ -145,7 +145,7 @@ Fall interval: `fastDrop ? 45 : tutorial ? 1400 : 1000 - speed * 90`. Lock delay
 | `bitdrop-tut` | unset = first-run tutorial | Tutorial gate |
 | `bitdrop-best` | 0 | Best score |
 | `bitdrop-best-level` | 1 | Best level |
-| `bitdrop-save` | — | Mid-run save (level, score, grid, pill, nextPill) |
+| `bitdrop-save` | — | Mid-run save (level, score, grid, block, nextBlock) |
 | `bitdrop-hide-opponent-map` | hidden unless `'0'` | MP minimap |
 | `bitdrop-mp-token` | generated `p_…` | P2P client id |
 | `bitdrop-p2p-duel` | — | Direct-duel handshake |
@@ -156,8 +156,8 @@ None of the GitHub `PLATFORM` / `ENABLE_*` flags. Multiplayer is always in the m
 
 ### Other live systems
 
-- Rainbow wildcard 15% on a pill half; never both halves rainbow. All-rainbow runs do not clear.
-- Targets do not fall. Linked pill halves fall together.
+- Rainbow wildcard 15% on a block half; never both halves rainbow. All-rainbow runs do not clear.
+- Targets do not fall. Linked block halves fall together.
 - Bidirectional `checkClears` scan (L→R and R→L, T→B and B→T). Phase 1 GitHub scans only L→R and T→B; same result for ordinary runs.
 - Music + SFX (WebAudio).
 - `mobileGameplay` detection as above.
@@ -168,7 +168,7 @@ None of the GitHub `PLATFORM` / `ENABLE_*` flags. Multiplayer is always in the m
 
 ### Shared game (`artifacts/claude-design`)
 
-Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No levels, no save, no ghost, no music, no next-pill, no friend duel.
+Phase 1 solo puzzle. Screens: **menu, play, win, lose, learn, scores**. No levels, no save, no ghost, no music, no next-block, no friend duel.
 
 | Item | GitHub `App` (this repo) |
 | --- | --- |
@@ -213,7 +213,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 | Ghost −35% score | **Website-only** | No ghost setting on Reddit. Equivalent to ghost **off** (mul 1). |
 | Level loop (`nextLevel`, +2 targets/level, score carries) | **Website-only / Missing on Reddit** | Reddit win is a single board, PLAY AGAIN resets score. |
 | Mid-run save / RESUME | **Website-only** | `bitdrop-save`. |
-| Next-pill preview | **Website-only** | |
+| Next-block preview | **Website-only** | |
 | Score popups / round summary | **Website-only** | |
 | Best level | **Website-only** | `bitdrop-best-level`. |
 | Friend match / P2P duel / garbage | **Website text-link duel stays on the live site.** Reddit uses **Find a challenger**: a Devvit Redis open-seat queue, a visible wait timer, and **START NOW** for a local bot (random skill 1–10) — see [reddit-duel.md](./reddit-duel.md). Not SMS, not a username box, not the Sep-2 WebRTC room. Human wins and bot wins are separate monthly boards. |
@@ -282,7 +282,7 @@ Legend: **Parity** = same rule/UI in live *and* Reddit (shared App). **Missing o
 
 **Not ported** (documented only; would be a product rebuild, not a scoring bugfix):
 
-- Levels, save/resume, ghost, next pill, popups, friend duel, live defaults 10/12/4, 2.6-cell hard-drop threshold. (Landscape play + gutters now ship on GitHub/Reddit; live Sep-2 still uses the mobile rotate blocker.)
+- Levels, save/resume, ghost, next block, popups, friend duel, live defaults 10/12/4, 2.6-cell hard-drop threshold. (Landscape play + gutters now ship on GitHub/Reddit; live Sep-2 still uses the mobile rotate blocker.)
 
 **Dropped (do not port):** music — live pause MUSIC, `musicOn`, `bitdrop-music`, level BGM loops. Shared + Reddit stay SFX-only.
 
@@ -320,6 +320,6 @@ pnpm --filter @workspace/claude-design run build
 cd artifacts/devvit-bit-drop && pnpm run typecheck && pnpm run build
 ```
 
-Manual: start a game, clear 4 with **no** target → HUD score stays 0; clear a line that includes a target → score jumps once when the sequence settles (next pill), not on the flash.
+Manual: start a game, clear 4 with **no** target → HUD score stays 0; clear a line that includes a target → score jumps once when the sequence settles (next block), not on the flash.
 
 Live site (portrait): same — score popups only after a target-bearing drop.
