@@ -69,20 +69,20 @@ export function DuelResult({
         >
           {title}
         </div>
-        <div data-testid="duel-set-score" style={{ fontFamily: BODY, fontWeight: 800, fontSize: 40, color: '#fff', letterSpacing: 1, lineHeight: 1 }}>
+        <div data-testid="duel-set-score" style={{ fontFamily: BODY, fontWeight: 800, fontSize: 32, color: '#fff', letterSpacing: 1, lineHeight: 1 }}>
           {formatSetScore(mine, theirs)}
         </div>
         <div data-testid="duel-faced" style={{ fontFamily: BODY, fontWeight: 700, fontSize: 14, color: '#d9cf4a', lineHeight: 1.4, overflowWrap: 'anywhere' }}>
           vs {faced}
         </div>
         <div style={{ fontFamily: BODY, fontSize: 12, color: '#9a9aa0' }}>First to 3 · match over</div>
-        {localError && (
-          <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{localError}</div>
-        )}
         <button type="button" data-testid="duel-play-again" onClick={onPlayAgain} style={goBtn}>PLAY AGAIN</button>
         <button type="button" data-testid="duel-find" onClick={onFind} style={findBtn}>FIND A CHALLENGER</button>
         <button type="button" data-testid="duel-menu" onClick={onMenu} style={ghostBtn}>MENU</button>
         <div className="bitdrop-duel-scroll">
+          {localError && (
+            <div style={{ fontFamily: BODY, fontSize: 12, color: '#e07070', lineHeight: 1.4 }}>{localError}</div>
+          )}
           {vsPc && (
             <div style={{ fontFamily: BODY, fontSize: 12, color: '#9a9aa0', lineHeight: 1.45 }}>
               {youWon
@@ -112,30 +112,33 @@ export function DuelResult({
 
 const goBtn: React.CSSProperties = {
   fontFamily: 'inherit',
-  fontSize: 12,
+  fontSize: 11,
   background: '#2ea043',
   color: '#fff',
-  border: '4px solid #fff',
-  padding: '12px 10px',
+  border: '3px solid #fff',
+  padding: '8px 10px',
   cursor: 'pointer',
+  flex: 'none',
 };
 
 const findBtn: React.CSSProperties = {
   fontFamily: 'inherit',
-  fontSize: 11,
+  fontSize: 10,
   background: '#c23a3a',
   color: '#fff',
-  border: '4px solid #fff',
-  padding: '12px 10px',
+  border: '3px solid #fff',
+  padding: '8px 10px',
   cursor: 'pointer',
+  flex: 'none',
 };
 
 const ghostBtn: React.CSSProperties = {
   fontFamily: 'inherit',
-  fontSize: 11,
+  fontSize: 10,
   background: '#3a3a3e',
   color: '#fff',
   border: '3px solid #6e6e72',
-  padding: '12px 10px',
+  padding: '8px 10px',
   cursor: 'pointer',
+  flex: 'none',
 };

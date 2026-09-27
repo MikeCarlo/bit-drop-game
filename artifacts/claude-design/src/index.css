@@ -385,13 +385,17 @@ input[type=range]::-moz-range-thumb {
 
 .bitdrop-duel-result {
   text-align: center;
+  gap: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .bitdrop-duel-outcome {
-  font-size: clamp(18px, 4.2dvh, 28px);
-  line-height: 1.35;
-  padding: 12px 8px;
+  font-size: clamp(16px, 3.6dvh, 26px);
+  line-height: 1.25;
+  padding: 8px 8px;
   border: 4px solid currentColor;
+  flex: none;
 }
 
 .bitdrop-duel-outcome-win {
